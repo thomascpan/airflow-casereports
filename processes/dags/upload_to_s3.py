@@ -3,6 +3,7 @@ from datetime import timedelta
 import airflow
 from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
+from airflow.operators import DummyOperator, PythonOperator
 
 default_args = {
     'owner': 'airflow',
@@ -34,6 +35,18 @@ dag = DAG(
     description='Casereport processing DAG',
     schedule_interval=timedelta(days=1),
 )
+
+with DAG('S3_dag_test', default_args=default_args, schedule_interval='@once') as dag:
+
+    start_task = DummyOperator(
+            task_id='dummy_start'
+    )
+
+    upload_to_S3_task = PythonOperator(
+            task_id='upload_file_to_S3',
+            python_callable=lambda _ : print("Uploading file to S3")
+    )
+
 
 t1 = BashOperator(
     task_id='load_data',
@@ -70,4 +83,4 @@ t3 = BashOperator(
     dag=dag,
 )
 
-t1 >> t2 >> t3
+start_task >> upload_to_S3_task
