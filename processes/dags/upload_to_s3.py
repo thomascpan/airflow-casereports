@@ -1,40 +1,35 @@
-from datetime import timedelta
-
-import airflow
+#import airflow
 from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
-from airflow.operators import DummyOperator, PythonOperator
+from airflow.operators.dummy_operator import DummyOperator
+from airflow.operators.python_operator import PythonOperator
+import boto3
+import airflow.hooks.S3_hook
+import datetime
+import os
+
+THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
+my_file = os.path.join(THIS_FOLDER, 'test.txt')
+from boto3.s3.transfer import S3Transfer
+
+#client = boto3.client('s3', aws_access_key_id='',aws_secret_access_key='')
+#transfer = S3Transfer(client)
+#transfer.upload_file(my_file, 'supreme-acrobat', 'blah.txt')
+
+def upload_file_to_S3(filename, key, bucket_name):
+    transfer = S3Transfer(client)
+    transfer.upload_file(filename, bucket_name, key)
+    s3.Bucket(bucket_name).upload_file(filename, key)
+
+def upload_file_to_S3_with_hook(filename, key, bucket_name):
+    hook = airflow.hooks.S3_hook.S3Hook('my_conn_S3')
+    hook.load_file(filename, key, bucket_name)
 
 default_args = {
     'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': airflow.utils.dates.days_ago(2),
-    'email': ['airflow@example.com'],
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5),
-    # 'queue': 'bash_queue',
-    # 'pool': 'backfill',
-    # 'priority_weight': 10,
-    # 'end_date': datetime(2016, 1, 1),
-    # 'wait_for_downstream': False,
-    # 'dag': dag,
-    # 'adhoc':False,
-    # 'sla': timedelta(hours=2),
-    # 'execution_timeout': timedelta(seconds=300),
-    # 'on_failure_callback': some_function,
-    # 'on_success_callback': some_other_function,
-    # 'on_retry_callback': another_function,
-    # 'trigger_rule': u'all_success'
+    'start_date': datetime.datetime(2020, 2, 1),
+    'retry_delay': datetime.timedelta(minutes=5)
 }
-
-dag = DAG(
-    'main',
-    default_args=default_args,
-    description='Casereport processing DAG',
-    schedule_interval=timedelta(days=1),
-)
 
 with DAG('S3_dag_test', default_args=default_args, schedule_interval='@once') as dag:
 
@@ -44,43 +39,17 @@ with DAG('S3_dag_test', default_args=default_args, schedule_interval='@once') as
 
     upload_to_S3_task = PythonOperator(
             task_id='upload_file_to_S3',
-            python_callable=lambda _ : print("Uploading file to S3")
+            python_callable=lambda: print("Uploading file to S3")
     )
 
+    start_task >> upload_to_S3_task
 
-t1 = BashOperator(
-    task_id='load_data',
-    bash_command='date',
-    dag=dag,
-)
-
-t1.doc_md = """\
-#### Task Documentation
-"""
-
-dag.doc_md = __doc__
-
-t2 = BashOperator(
-    task_id='process',
-    depends_on_past=False,
-    bash_command='sleep 5',
-    dag=dag,
-)
-
-templated_command = """
-{% for i in range(5) %}
-    echo "{{ ds }}"
-    echo "{{ macros.ds_add(ds, 7)}}"
-    echo "{{ params.my_param }}"
-{% endfor %}
-"""
-
-t3 = BashOperator(
-    task_id='mongoDB',
-    depends_on_past=False,
-    bash_command=templated_command,
-    params={'my_param': 'Parameter I passed in'},
-    dag=dag,
-)
-
-start_task >> upload_to_S3_task
+upload_to_S3_task = PythonOperator(
+    task_id='upload_file_to_S3_with_hook',
+    python_callable=upload_file_to_S3_with_hook,
+    op_kwargs={
+        'filename': my_file,
+        'key': 'new2.txt',
+        'bucket_name': 'supreme-acrobat',
+    },
+    dag=dag)
