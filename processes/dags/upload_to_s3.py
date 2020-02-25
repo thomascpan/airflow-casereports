@@ -28,20 +28,25 @@ def import_wrapper():
     #upload_file_to_S3_with_hook(my_file, 'newfile.txt', 'supreme-acrobat')
 
 def download_files():
-    #path = 'pub/pmc/oa_bulk'
-    #files = []
-    # filenames = ftp.nlst('pub/pmc/oa_bulk/*.xml.tar.gz')
+    path = 'pub/pmc/oa_bulk'
+    files = []
+    #filenames = ftp.nlst('pub/pmc/oa_bulk/*.xml.tar.gz')
     ftp = FTP("ftp.ncbi.nlm.nih.gov")
     ftp.login("anonymous", "ifso6888@gmail.com")
-    #ftp.cwd(path)
-    #filenames = ftp.nlst('pub/pmc/oa_bulk/comm_use.A-B.xml.tar.gz')
-    #ftp.dir(files.append)
-    #logging.info(files)
-
-    #for filename in filenames:
-        #ftp.open(filename, 'wb').write)
-        #ftp.retrbinary("RETR " + filename)
+    ftp.cwd('pub/pmc/oa_bulk/')
+    filenames = ftp.nlst('comm_use.A-B.xml.tar.gz')
+    ftp.dir(files.append)
+    root_dir = '/usr/local/airflow'
+    temp_dir = root_dir + '/' + 'temp'
+    if not os.path.exists(temp_dir):
+        os.mkdir(temp_dir)
+    for filename in filenames:
+        local_filename = os.path.join(temp_dir, filename)
+        file = open(local_filename, 'wb')
+        ftp.retrbinary("RETR " + filename, file.write)
+        file.close()
     ftp.quit()
+    os.rmdir(temp_dir)
     #upload_file_to_S3_with_hook(my_file, 'newfile2.txt', 'supreme-acrobat')
     logging.info("done download")
     return None
