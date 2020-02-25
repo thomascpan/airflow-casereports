@@ -9,7 +9,7 @@ import os
 import logging
 import urllib
 from ftplib import FTP
-
+import tarfile
 
 THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
 my_file = os.path.join(THIS_FOLDER, 'test.txt')
@@ -34,7 +34,7 @@ def download_files():
     ftp = FTP("ftp.ncbi.nlm.nih.gov")
     ftp.login("anonymous", "ifso6888@gmail.com")
     ftp.cwd('pub/pmc/oa_bulk/')
-    filenames = ftp.nlst('comm_use.A-B.xml.tar.gz')
+    filenames = ftp.nlst('non_comm_use.A-B.xml.tar.gz')
     ftp.dir(files.append)
     root_dir = '/usr/local/airflow'
     temp_dir = root_dir + '/' + 'temp'
@@ -45,13 +45,18 @@ def download_files():
         file = open(local_filename, 'wb')
         ftp.retrbinary("RETR " + filename, file.write)
         file.close()
+        my_tar = tarfile.open(local_filename)
+        for member in my_tar.getmembers():
+            if "Case_Rep" in member.name:
+                my_tar.extract(member, temp_dir)
+        my_tar.close()
     ftp.quit()
     os.rmdir(temp_dir)
     #upload_file_to_S3_with_hook(my_file, 'newfile2.txt', 'supreme-acrobat')
-    logging.info("done download")
+    logging.info("done with download")
     return None
 
-def decompress_files():
+def decompress_file():
     pass
 
 def delete_extra_files():
