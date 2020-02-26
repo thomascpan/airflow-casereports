@@ -12,7 +12,8 @@ import tarfile
 import ntpath
 import shutil
 
-def upload_file_to_S3_with_hook(filename: str, key: str, bucket_name :str) -> None:
+
+def upload_file_to_S3_with_hook(filename: str, key: str, bucket_name: str) -> None:
     """Uploads file to s3.
 
     Args:
@@ -23,6 +24,7 @@ def upload_file_to_S3_with_hook(filename: str, key: str, bucket_name :str) -> No
     """
     hook = airflow.hooks.S3_hook.S3Hook('my_conn_S3')
     hook.load_file(filename, key, bucket_name=bucket_name, replace=True)
+
 
 def extract_original_name(filepath: str) -> str:
     """Extracts original name from tar.gz file
@@ -36,6 +38,7 @@ def extract_original_name(filepath: str) -> str:
     name = filepath.split(".")
     return ".".join(name[0:-2])
 
+
 def create_dir(dirname: str) -> None:
     """Creates directory even if exist
 
@@ -45,6 +48,7 @@ def create_dir(dirname: str) -> None:
     if not os.path.exists(dirname):
         os.mkdir(dirname)
 
+
 def delete_dir(dirname: str) -> None:
     """Deletes directory even if exist
 
@@ -52,6 +56,7 @@ def delete_dir(dirname: str) -> None:
         dirname (str): name of directory.
     """
     shutil.rmtree(dirname)
+
 
 def download_file(ftp: FTP, filename: str, dest_dir: str) -> str:
     """Downloads file from FTP.
@@ -70,6 +75,7 @@ def download_file(ftp: FTP, filename: str, dest_dir: str) -> str:
     file.close()
     return filepath
 
+
 def extract_file(filepath: str, dest_dir: str) -> None:
     """Extracts tar.gz file.
 
@@ -83,6 +89,7 @@ def extract_file(filepath: str, dest_dir: str) -> None:
             my_tar.extract(member, dest_dir)
     my_tar.close()
 
+
 def delete_file(filepath: str) -> None:
     """Delete file.
 
@@ -91,6 +98,7 @@ def delete_file(filepath: str) -> None:
     """
     if os.path.exists(filepath):
         os.remove(filepath)
+
 
 def make_tarfile(output_filepath: str, source_dir: str) -> None:
     """Make tar.gz file.
@@ -101,6 +109,7 @@ def make_tarfile(output_filepath: str, source_dir: str) -> None:
     """
     with tarfile.open(output_filepath, "w:gz") as tar:
         tar.add(source_dir, arcname=os.path.basename(source_dir))
+
 
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
@@ -131,11 +140,12 @@ def extract_pubmed_data() -> None:
         filepath_tar_gz = download_file(ftp, filename, temp_dir)
         filename_tar_gz = ntpath.basename(filepath_tar_gz)
         o_path = extract_original_name(filepath_tar_gz)
-        
+
         extract_file(filepath_tar_gz, o_path)
         delete_file(filepath_tar_gz)
         make_tarfile(filepath_tar_gz, o_path)
-        upload_file_to_S3_with_hook(filepath_tar_gz, filename_tar_gz, 'supreme-acrobat-data')
+        upload_file_to_S3_with_hook(
+            filepath_tar_gz, filename_tar_gz, 'supreme-acrobat-data')
         delete_dir(temp_dir)
 
         try:
@@ -143,9 +153,10 @@ def extract_pubmed_data() -> None:
         except:
             None
 
+
 def extract_pubmed_data_failure_callback() -> None:
     root_dir = '/usr/local/airflow'
-    temp_dir = root_dir + '/' + 'temp'        
+    temp_dir = root_dir + '/' + 'temp'
     delete_dir(temp_dir)
 
 
