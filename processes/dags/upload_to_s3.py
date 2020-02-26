@@ -125,7 +125,7 @@ def extract_pubmed_data() -> None:
     ftp = FTP(ftp_url)
     ftp.login(username, password)
     ftp.cwd(ftp_path)
-    filenames = ftp.nlst('pub/pmc/oa_bulk/*.xml.tar.gz')
+    filenames = ftp.nlst('*.xml.tar.gz')
     try:
         ftp.quit()
     except:
