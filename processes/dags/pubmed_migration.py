@@ -167,7 +167,7 @@ default_args = {
 }
 
 dag = DAG(
-    'S3_dag_test',
+    'pubmed_migration',
     default_args=default_args,
     description='Pubmed Migration',
     schedule_interval='@once',
@@ -180,16 +180,24 @@ extract_pubmed_data_task = PythonOperator(
     dag=dag,
 )
 
+# Download from S3
+# Extract relevant values and create json files following case_report.js schema.
+#   i.e. PMC4716828.json
+#   Use pubmed parser: https://github.com/titipata/pubmed_parser
+# Upload to s3.
 transform_pubmed_data_task = DummyOperator(
     task_id='transform_pubmed_data',
     dag=dag,
 )
 
+# Create MongoDB snapshot and upload to S3
 create_snapshot_task = DummyOperator(
     task_id='create_snapshot',
     dag=dag,
 )
 
+# Download json files from s3
+# Update mongodb. 
 update_mongodb_task = DummyOperator(
     task_id='update_mongodb',
     dag=dag,
