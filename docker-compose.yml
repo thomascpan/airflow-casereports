@@ -28,6 +28,7 @@ services:
       - FERNET_KEY=jsDPRErfv8Z_eVTnGfF8ywd19j4pyqE3NpdUBA_oRTo=
     volumes:
       - ./processes/dags:/usr/local/airflow/dags
+      - ./processes/common:/usr/local/airflow/common
       # Uncomment to include custom plugins
       # - ./plugins:/usr/local/airflow/plugins
     ports:
