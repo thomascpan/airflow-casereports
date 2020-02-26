@@ -148,6 +148,7 @@ def extract_pubmed_data_failure_callback() -> None:
     temp_dir = root_dir + '/' + 'temp'        
     delete_dir(temp_dir)
 
+
 default_args = {
     'owner': 'airflow',
     'start_date': datetime.datetime(2020, 2, 1),
