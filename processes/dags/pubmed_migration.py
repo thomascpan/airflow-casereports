@@ -2,28 +2,20 @@ from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
-import airflow.hooks.S3_hook
+from airflow.operators.pyth import PythonOperator
+from airflow.hooks.S3_hook import S3Hook
+from airflow.contrib.hooks.ftp_hook import FTPHook
 import datetime
 import os
 import logging
-import urllib
-from ftplib import FTP
 import tarfile
 import ntpath
 import shutil
+import fnmatch
 
 
-def upload_file_to_S3_with_hook(filename: str, key: str, bucket_name: str) -> None:
-    """Uploads file to s3.
-
-    Args:
-        filename (str): path of file.
-        key (str): S3 key that will point to the file.
-        bucket_name (str): Name of the bucket in which to store the file.
-
-    """
-    hook = airflow.hooks.S3_hook.S3Hook('my_conn_S3')
-    hook.load_file(filename, key, bucket_name=bucket_name, replace=True)
+s3_hook = S3Hook('my_conn_S3')
+ftp_hook = FTPHook('pubmed_ftp')
 
 
 def extract_original_name(filepath: str) -> str:
@@ -56,24 +48,6 @@ def delete_dir(dirname: str) -> None:
         dirname (str): name of directory.
     """
     shutil.rmtree(dirname)
-
-
-def download_file(ftp: FTP, filename: str, dest_dir: str) -> str:
-    """Downloads file from FTP.
-
-    Args:
-        ftp (FTP): FTP instance.
-        filename (str): name of file to download.
-        dest_dir (str): destination directory.
-
-    Returns:
-        str: path of download file.
-    """
-    filepath = os.path.join(dest_dir, filename)
-    file = open(filepath, 'wb')
-    ftp.retrbinary("RETR " + filename, file.write)
-    file.close()
-    return filepath
 
 
 def extract_file(filepath: str, dest_dir: str) -> None:
@@ -114,47 +88,33 @@ def make_tarfile(output_filepath: str, source_dir: str) -> None:
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
     """
-    logging.info("start import wrapper")
-    username = "anonymous"
-    password = "ifso6888@gmail.com"
-    ftp_url = 'ftp.ncbi.nlm.nih.gov'
-    ftp_path = 'pub/pmc/oa_bulk'
+    pattern = "*.xml.tar.gz"
+    ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
-    temp_dir = root_dir + '/' + 'temp'
+    temp_dir = os.path.join(root_dir, 'temp')
+    bucket_name = 'supreme-acrobat-data'
 
-    ftp = FTP(ftp_url)
-    ftp.login(username, password)
-    ftp.cwd(ftp_path)
-    filenames = ftp.nlst('*.xml.tar.gz')
-    try:
-        ftp.quit()
-    except:
-        None
+    filenames = ftp_hook.list_directory(ftp_path)
+    filenames = list(
+        filter(lambda filename: fnmatch.fnmatch(filename, pattern), filenames))
 
     for filename in filenames:
-        ftp = FTP(ftp_url)
-        ftp.login(username, password)
-        ftp.cwd(ftp_path)
-
         create_dir(temp_dir)
-        filepath_tar_gz = download_file(ftp, filename, temp_dir)
-        filename_tar_gz = ntpath.basename(filepath_tar_gz)
-        o_path = extract_original_name(filepath_tar_gz)
+        remote_path = os.path.join(ftp_path, filename)
+        local_path = os.path.join(temp_dir, filename)
 
-        extract_file(filepath_tar_gz, o_path)
-        delete_file(filepath_tar_gz)
-        make_tarfile(filepath_tar_gz, o_path)
-        upload_file_to_S3_with_hook(
-            filepath_tar_gz, filename_tar_gz, 'supreme-acrobat-data')
+        ftp_hook.retrieve_file(remote_path, local_path)
+        o_path = extract_original_name(local_path)
+
+        extract_file(local_path, o_path)
+        delete_file(local_path)
+        make_tarfile(local_path, o_path)
+        s3_hook.load_file(local_path, filename,
+                          bucket_name=bucket_name, replace=True)
         delete_dir(temp_dir)
 
-        try:
-            ftp.quit()
-        except:
-            None
 
-
-def extract_pubmed_data_failure_callback() -> None:
+def extract_pubmed_data_failure_callback(context) -> None:
     root_dir = '/usr/local/airflow'
     temp_dir = root_dir + '/' + 'temp'
     delete_dir(temp_dir)
@@ -197,7 +157,7 @@ create_snapshot_task = DummyOperator(
 )
 
 # Download json files from s3
-# Update mongodb. 
+# Update mongodb.
 update_mongodb_task = DummyOperator(
     task_id='update_mongodb',
     dag=dag,
