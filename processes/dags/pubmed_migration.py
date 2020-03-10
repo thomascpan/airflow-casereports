@@ -12,14 +12,12 @@ import ntpath
 import shutil
 import fnmatch
 import glob
-<<<<<<< HEAD
-=======
 import json
->>>>>>> 85f282fbb21cfe565d3c7500bb3c21f81d6a3e9f
 import pubmed_parser as pp
 
-
+# Setting up boto3 hook to AWS S3
 s3_hook = S3Hook('my_conn_S3')
+# Setting up FTP hook to pubmed ftp server
 ftp_hook = FTPHook('pubmed_ftp')
 
 
@@ -104,19 +102,31 @@ def make_tarfile(output_filepath: str, source_dir: str) -> None:
         tar.add(source_dir, arcname=os.path.basename(source_dir))
 
 def delete_temp() -> None:
+    """Deletes temporary directory that processes files
+    """
     root_dir = '/usr/local/airflow'
     temp_dir = root_dir + '/' + 'temp'
     delete_dir(temp_dir)
 
 
 def make_jsonfile(obj: dict, output_filepath: str) -> None:
+    """Make a JSON file from the casereport dictionary
+
+    Args:
+        obj (dict): casereport XML parsed as a dictionary
+        output_filepath (str): path of output file.
+    """
     with open(output_filepath, 'w') as json_file:
         json.dump(obj, json_file)
 
 
 def make_case_report_json(xml_path: str, json_path: str) -> None:
-    # logging.info("xml_path = %s" % xml_path)
-    # logging.info("json_path = %s" % json_path)
+    """Makes a JSON file from pubmed XML files
+
+    Args:
+        xml_path (str): path to input XML file
+        json_path (str): path to destination JSON file
+    """
     pubmed_xml = pp.parse_pubmed_xml(xml_path)
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
@@ -152,17 +162,13 @@ def make_case_report_json(xml_path: str, json_path: str) -> None:
     make_jsonfile(case_report, json_path)
 
 
-def delete_temp() -> None:
-    root_dir = '/usr/local/airflow'
-    temp_dir = root_dir + '/' + 'temp'
-    delete_dir(temp_dir)
-
-
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
     """
-    pattern = 'non_comm_use.A-B.xml.tar.gz'
-    # pattern = "*.xml.tar.gz"
+
+    #to test specific tar files
+    #pattern = 'non_comm_use.A-B.xml.tar.gz'
+    pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
@@ -195,15 +201,17 @@ def extract_pubmed_data_failure_callback(context) -> None:
 
 
 def transform_pubmed_data() -> None:
+    """Downloads tarfile from S3, forms JSON files from contents, and uploads to S3
+    """
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
+    json_dir = os.path.join(temp_dir, 'json')
     src_path = 'case_reports/pubmed/original/'
     dest_path = 'case_reports/pubmed/json/'
     src_bucket_name = 'supreme-acrobat-data'
     dest_bucket_name = 'supreme-acrobat-data'
     wildcard_key = 'case_reports/pubmed/original/*.*'
-    klist = s3_hook.list_keys(
-        src_bucket_name, prefix='case_reports/pubmed/original/', delimiter='/')
+    klist = s3_hook.list_keys(src_bucket_name, prefix='case_reports/pubmed/original/', delimiter='/')
     key_matches = []
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
 
@@ -215,21 +223,18 @@ def transform_pubmed_data() -> None:
 
         basename = os.path.basename(key)
         local_path = os.path.join(temp_dir, basename)
-        logging.info("local_path = %s" % local_path)
+        o_path = extract_original_name(local_path)
 
         obj = s3_hook.get_key(key, src_bucket_name)
         obj.download_file(local_path)
 
-        o_path = extract_original_name(local_path)
-        logging.info("o_path = %s" % o_path)
-
-        # not sure why need to use temp_dir and not o_path
         extract_file(local_path, temp_dir)
 
         glob_path = os.path.join(o_path, "*", "*.nxml")
 
         filenames = [f for f in glob.glob(glob_path)]
         logging.info("filenames = %s" % filenames)
+
         for filename in filenames[0:2]:
             fname, ext = os.path.splitext(os.path.basename(filename))
             json_filename = ".".join((fname, "json"))
@@ -246,7 +251,6 @@ def transform_pubmed_data() -> None:
                               bucket_name=dest_bucket_name, replace=True)
 
         delete_dir(temp_dir)
-
 
 
 def transform_pubmed_data_failure_callback(context) -> None:
@@ -273,11 +277,6 @@ extract_pubmed_data_task = PythonOperator(
     dag=dag,
 )
 
-# Download from S3
-# Extract relevant values and create json files following case_report.js schema.
-#   i.e. PMC4716828.json
-#   Use pubmed parser: https://github.com/titipata/pubmed_parser
-# Upload to s3.
 transform_pubmed_data_task = PythonOperator(
     task_id='transform_pubmed_data',
     python_callable=transform_pubmed_data,
