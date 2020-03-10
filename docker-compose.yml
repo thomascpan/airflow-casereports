@@ -14,7 +14,7 @@ services:
   webserver:
     image: puckel/docker-airflow:1.10.9
     build:
-      context: https://github.com/puckel/docker-airflow.git#1.10.9
+      context: .
       dockerfile: Dockerfile
       args:
         AIRFLOW_DEPS: gcp_api,s3
@@ -29,6 +29,7 @@ services:
     volumes:
       - ./processes/dags:/usr/local/airflow/dags
       - ./processes/common:/usr/local/airflow/common
+      - ./requirements.txt:/requirements.txt
       # Uncomment to include custom plugins
       # - ./plugins:/usr/local/airflow/plugins
     ports:
