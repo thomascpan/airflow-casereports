@@ -4,7 +4,8 @@ from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.hooks.S3_hook import S3Hook
 from airflow.contrib.hooks.ftp_hook import FTPHook
-import datetime
+from airflow.contrib.hooks.mongo_hook import MongoHook
+from datetime import datetime, timedelta
 import os
 import logging
 import tarfile
@@ -19,6 +20,8 @@ import pubmed_parser as pp
 s3_hook = S3Hook('my_conn_S3')
 # Setting up FTP hook to pubmed ftp server
 ftp_hook = FTPHook('pubmed_ftp')
+# Setting up MongoDB hook to mlab server
+mongodb_hook = MongoHook('mongo_default')
 
 
 def extract_original_name(filepath: str) -> str:
@@ -101,6 +104,7 @@ def make_tarfile(output_filepath: str, source_dir: str) -> None:
     with tarfile.open(output_filepath, "w:gz") as tar:
         tar.add(source_dir, arcname=os.path.basename(source_dir))
 
+
 def delete_temp() -> None:
     """Deletes temporary directory that processes files
     """
@@ -166,7 +170,7 @@ def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
     """
 
-    #to test specific tar files
+    # to test specific tar files
     #pattern = 'non_comm_use.A-B.xml.tar.gz'
     pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
@@ -211,7 +215,8 @@ def transform_pubmed_data() -> None:
     src_bucket_name = 'supreme-acrobat-data'
     dest_bucket_name = 'supreme-acrobat-data'
     wildcard_key = 'case_reports/pubmed/original/*.*'
-    klist = s3_hook.list_keys(src_bucket_name, prefix='case_reports/pubmed/original/', delimiter='/')
+    klist = s3_hook.list_keys(
+        src_bucket_name, prefix=src_path, delimiter='/')
     key_matches = []
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
 
@@ -257,10 +262,44 @@ def transform_pubmed_data_failure_callback(context) -> None:
     delete_temp()
 
 
+def update_mongo() -> None:
+    """Updates MongoDB caseReports
+    """
+    root_dir = '/usr/local/airflow'
+    temp_dir = os.path.join(root_dir, 'temp')
+    json_dir = os.path.join(temp_dir, 'json')
+    src_path = 'case_reports/pubmed/json/'
+    src_bucket_name = 'supreme-acrobat-data'
+    wildcard_key = 'case_reports/pubmed/json/*.*'
+    klist = s3_hook.list_keys(
+        src_bucket_name, prefix=src_path, delimiter='/')
+    key_matches = []
+    key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
+
+    logging.info(key_matches)
+
+    docs = []
+
+    for key in key_matches:
+        basename = os.path.basename(key)
+        local_path = os.path.join(temp_dir, basename)
+        o_path = extract_original_name(local_path)
+
+        obj = s3_hook.get_key(key, src_bucket_name)
+        file_content = obj.get()['Body'].read().decode('utf-8')
+        json_content = json.loads(file_content)
+        docs.append(json_content)
+
+    collection = 'caseReports'
+    filter_docs = [{'pmID': doc['pmID']} for doc in docs]
+    mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
+    pass
+
+
 default_args = {
     'owner': 'airflow',
-    'start_date': datetime.datetime(2020, 2, 1),
-    'retry_delay': datetime.timedelta(minutes=5)
+    'start_date': datetime(2020, 2, 1),
+    'retry_delay': timedelta(minutes=5)
 }
 
 dag = DAG(
@@ -292,8 +331,9 @@ create_snapshot_task = DummyOperator(
 
 # # Download json files from s3
 # # Update mongodb.
-update_mongodb_task = DummyOperator(
+update_mongodb_task = PythonOperator(
     task_id='update_mongodb',
+    python_callable=update_mongo,
     dag=dag,
 )
 
