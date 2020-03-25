@@ -290,25 +290,17 @@ def transform_pubmed_data() -> None:
             jl_path = os.path.join(json_dir, jl_filename)
             new_json = export_case_report_json(filename)
             json_list.append(new_json)
-            #make_case_report_json(filename, json_path)
 
         with open(jl_path, 'w') as outfile:
             for entry in json_list:
                 json.dump(entry, outfile)
                 outfile.write('\n')
 
-        key = os.path.join(dest_path, os.path.basename(o_path_basename + ".json"))
+        key = os.path.join(dest_path, os.path.basename(o_path_basename + ".jsonl"))
         s3_hook.load_file(jl_path, key, bucket_name=dest_bucket_name, replace=True)
 
         jsons = [f for f in glob.glob(os.path.join(json_dir, "*.json"))]
-
         logging.info("json list = %s" % str(len(json_list)))
-
-        #for filename in jsons:
-        #    key = os.path.join(dest_path, os.path.basename(filename))
-        #    s3_hook.load_file(filename, key,
-        #                      bucket_name=dest_bucket_name, replace=True)
-
         delete_dir(temp_dir)
 
 
@@ -332,21 +324,22 @@ def update_mongo() -> None:
 
     logging.info(key_matches)
 
-    docs = []
-
     for key in key_matches:
         basename = os.path.basename(key)
         local_path = os.path.join(temp_dir, basename)
         o_path = extract_original_name(local_path)
+        docs = []
+        results = []
 
         obj = s3_hook.get_key(key, src_bucket_name)
-        #file_content = obj.get()['Body'].read().decode('utf-8')
-        #json_content = json.loads(file_content)
-        #docs.append(json_content)
-
-    collection = 'caseReports'
-    filter_docs = [{'pmID': doc['pmID']} for doc in docs]
-    #mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
+        file_content = obj.get()['Body'].read().decode('utf-8')
+        results = file_content.splitlines()
+        for result in results:
+            json_content = json.loads(result)
+            docs.append(json_content)
+        collection = 'caseReports'
+        filter_docs = [{'pmID': doc['pmID']} for doc in docs]
+        mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
 
 
 default_args = {
