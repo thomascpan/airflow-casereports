@@ -165,14 +165,54 @@ def make_case_report_json(xml_path: str, json_path: str) -> None:
 
     make_jsonfile(case_report, json_path)
 
+def export_case_report_json(xml_path: str) -> json:
+    """Makes a JSON file from pubmed XML files
+
+    Args:
+        xml_path (str): path to input XML file
+        json_path (str): path to destination JSON file
+    """
+    pubmed_xml = pp.parse_pubmed_xml(xml_path)
+    pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
+    pubmed_references = pp.parse_pubmed_references(xml_path)
+
+    text = " ".join([p["text"] for p in pubmed_paragraph])
+    case_report = {
+        "pmID": pubmed_xml["pmid"],
+        "messages": [],
+        "source_files": [],
+        "modifications": [],
+        "normalizations": [],
+        # ctime            : 1351154734.5055847,
+        "text": text,
+        "entities": [],
+        "attributes": [],
+        # date : { type: Date, default: Date.now }
+        "relations": [],
+        "triggers": [],
+        "events": [],
+        "equivs": [],
+        "comments": [],
+        # sentence_offsets     : [],
+        # token_offsets    : [],
+        "action": None,
+        "abstract": pubmed_xml["abstract"],
+        "authors": pubmed_xml["author_list"],
+        "keywords": [],
+        "introduction": None,
+        "discussion": None,
+        "references": []
+    }
+
+    return case_report
 
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
     """
 
     # to test specific tar files
-    #pattern = 'non_comm_use.A-B.xml.tar.gz'
-    pattern = "*.xml.tar.gz"
+    pattern = 'non_comm_use.A-B.xml.tar.gz'
+    #pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
@@ -229,6 +269,7 @@ def transform_pubmed_data() -> None:
         basename = os.path.basename(key)
         local_path = os.path.join(temp_dir, basename)
         o_path = extract_original_name(local_path)
+        o_path_basename = os.path.basename(o_path)
 
         obj = s3_hook.get_key(key, src_bucket_name)
         obj.download_file(local_path)
@@ -239,21 +280,34 @@ def transform_pubmed_data() -> None:
 
         filenames = [f for f in glob.glob(glob_path)]
         logging.info("filenames = %s" % filenames)
+        json_list = []
 
-        for filename in filenames[0:2]:
+        for filename in filenames[0:4]:
             fname, ext = os.path.splitext(os.path.basename(filename))
             json_filename = ".".join((fname, "json"))
+            jl_filename = ".".join((fname, "jsonl"))
             json_path = os.path.join(json_dir, json_filename)
-            make_case_report_json(filename, json_path)
+            jl_path = os.path.join(json_dir, jl_filename)
+            new_json = export_case_report_json(filename)
+            json_list.append(new_json)
+            #make_case_report_json(filename, json_path)
+
+        with open(jl_path, 'w') as outfile:
+            for entry in json_list:
+                json.dump(entry, outfile)
+                outfile.write('\n')
+
+        key = os.path.join(dest_path, os.path.basename(o_path_basename + ".json"))
+        s3_hook.load_file(jl_path, key, bucket_name=dest_bucket_name, replace=True)
 
         jsons = [f for f in glob.glob(os.path.join(json_dir, "*.json"))]
 
-        logging.info("jsons = %s" % jsons)
+        logging.info("json list = %s" % str(len(json_list)))
 
-        for filename in jsons:
-            key = os.path.join(dest_path, os.path.basename(filename))
-            s3_hook.load_file(filename, key,
-                              bucket_name=dest_bucket_name, replace=True)
+        #for filename in jsons:
+        #    key = os.path.join(dest_path, os.path.basename(filename))
+        #    s3_hook.load_file(filename, key,
+        #                      bucket_name=dest_bucket_name, replace=True)
 
         delete_dir(temp_dir)
 
@@ -286,14 +340,13 @@ def update_mongo() -> None:
         o_path = extract_original_name(local_path)
 
         obj = s3_hook.get_key(key, src_bucket_name)
-        file_content = obj.get()['Body'].read().decode('utf-8')
-        json_content = json.loads(file_content)
-        docs.append(json_content)
+        #file_content = obj.get()['Body'].read().decode('utf-8')
+        #json_content = json.loads(file_content)
+        #docs.append(json_content)
 
     collection = 'caseReports'
     filter_docs = [{'pmID': doc['pmID']} for doc in docs]
-    mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
-    pass
+    #mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
 
 
 default_args = {
