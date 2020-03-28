@@ -113,64 +113,11 @@ def delete_temp() -> None:
     delete_dir(temp_dir)
 
 
-def make_jsonfile(obj: dict, output_filepath: str) -> None:
-    """Make a JSON file from the casereport dictionary
-
-    Args:
-        obj (dict): casereport XML parsed as a dictionary
-        output_filepath (str): path of output file.
-    """
-    with open(output_filepath, 'w') as json_file:
-        json.dump(obj, json_file)
-
-
-def make_case_report_json(xml_path: str, json_path: str) -> None:
-    """Makes a JSON file from pubmed XML files
+def build_case_report_json(xml_path: str) -> json:
+    """Makes and returns a JSON file from pubmed XML files
 
     Args:
         xml_path (str): path to input XML file
-        json_path (str): path to destination JSON file
-    """
-    pubmed_xml = pp.parse_pubmed_xml(xml_path)
-    pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
-    pubmed_references = pp.parse_pubmed_references(xml_path)
-
-    text = " ".join([p["text"] for p in pubmed_paragraph])
-    case_report = {
-        "pmID": pubmed_xml["pmid"],
-        "messages": [],
-        "source_files": [],
-        "modifications": [],
-        "normalizations": [],
-        # ctime            : 1351154734.5055847,
-        "text": text,
-        "entities": [],
-        "attributes": [],
-        # date : { type: Date, default: Date.now }
-        "relations": [],
-        "triggers": [],
-        "events": [],
-        "equivs": [],
-        "comments": [],
-        # sentence_offsets     : [],
-        # token_offsets    : [],
-        "action": None,
-        "abstract": pubmed_xml["abstract"],
-        "authors": pubmed_xml["author_list"],
-        "keywords": [],
-        "introduction": None,
-        "discussion": None,
-        "references": []
-    }
-
-    make_jsonfile(case_report, json_path)
-
-def export_case_report_json(xml_path: str) -> json:
-    """Makes a JSON file from pubmed XML files
-
-    Args:
-        xml_path (str): path to input XML file
-        json_path (str): path to destination JSON file
     """
     pubmed_xml = pp.parse_pubmed_xml(xml_path)
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
@@ -244,28 +191,40 @@ def extract_pubmed_data_failure_callback(context) -> None:
     delete_temp()
 
 
+def join_json_data (filenames: str, dest_path: str) -> None:
+    """Make a json file consisting of multiple json data
+
+    Args:
+        filenames (str): names of input json files
+        dest_path (str): directory for combined json output
+    """
+    outfile = open(dest_path, 'w')
+    for filename in filenames:
+        new_json = build_case_report_json(filename)
+        json.dump(new_json, outfile)
+        outfile.write('\n')
+
+    outfile.close()
+
+
+
 def transform_pubmed_data() -> None:
     """Downloads tarfile from S3, forms JSON files from contents, and uploads to S3
     """
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
-    json_dir = os.path.join(temp_dir, 'json')
     src_path = 'case_reports/pubmed/original/'
     dest_path = 'case_reports/pubmed/json/'
     src_bucket_name = 'supreme-acrobat-data'
     dest_bucket_name = 'supreme-acrobat-data'
     wildcard_key = 'case_reports/pubmed/original/*.*'
-    klist = s3_hook.list_keys(
-        src_bucket_name, prefix=src_path, delimiter='/')
-    key_matches = []
+    klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
-
-    logging.info(key_matches)
+    create_dir(temp_dir)
+    filecount = 0
 
     for key in key_matches:
-        create_dir(temp_dir)
-        create_dir(json_dir)
-
+        filecount += 1
         basename = os.path.basename(key)
         local_path = os.path.join(temp_dir, basename)
         o_path = extract_original_name(local_path)
@@ -273,35 +232,17 @@ def transform_pubmed_data() -> None:
 
         obj = s3_hook.get_key(key, src_bucket_name)
         obj.download_file(local_path)
-
         extract_file(local_path, temp_dir)
-
         glob_path = os.path.join(o_path, "*", "*.nxml")
 
         filenames = [f for f in glob.glob(glob_path)]
-        logging.info("filenames = %s" % filenames)
-        json_list = []
+        json_path = os.path.join(temp_dir, 'temp'+ str(filecount) + '.json')
+        join_json_data(filenames, json_path)
 
-        for filename in filenames[0:4]:
-            fname, ext = os.path.splitext(os.path.basename(filename))
-            json_filename = ".".join((fname, "json"))
-            jl_filename = ".".join((fname, "jsonl"))
-            json_path = os.path.join(json_dir, json_filename)
-            jl_path = os.path.join(json_dir, jl_filename)
-            new_json = export_case_report_json(filename)
-            json_list.append(new_json)
+        key = os.path.join(dest_path, os.path.basename(o_path_basename + ".json"))
+        s3_hook.load_file(json_path, key, bucket_name=dest_bucket_name, replace=True)
 
-        with open(jl_path, 'w') as outfile:
-            for entry in json_list:
-                json.dump(entry, outfile)
-                outfile.write('\n')
-
-        key = os.path.join(dest_path, os.path.basename(o_path_basename + ".jsonl"))
-        s3_hook.load_file(jl_path, key, bucket_name=dest_bucket_name, replace=True)
-
-        jsons = [f for f in glob.glob(os.path.join(json_dir, "*.json"))]
-        logging.info("json list = %s" % str(len(json_list)))
-        delete_dir(temp_dir)
+    delete_dir(temp_dir)
 
 
 def transform_pubmed_data_failure_callback(context) -> None:
@@ -311,32 +252,22 @@ def transform_pubmed_data_failure_callback(context) -> None:
 def update_mongo() -> None:
     """Updates MongoDB caseReports
     """
-    root_dir = '/usr/local/airflow'
-    temp_dir = os.path.join(root_dir, 'temp')
-    json_dir = os.path.join(temp_dir, 'json')
     src_path = 'case_reports/pubmed/json/'
     src_bucket_name = 'supreme-acrobat-data'
     wildcard_key = 'case_reports/pubmed/json/*.*'
-    klist = s3_hook.list_keys(
-        src_bucket_name, prefix=src_path, delimiter='/')
-    key_matches = []
+
+    klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
 
-    logging.info(key_matches)
-
     for key in key_matches:
-        basename = os.path.basename(key)
-        local_path = os.path.join(temp_dir, basename)
-        o_path = extract_original_name(local_path)
         docs = []
-        results = []
-
         obj = s3_hook.get_key(key, src_bucket_name)
         file_content = obj.get()['Body'].read().decode('utf-8')
-        results = file_content.splitlines()
-        for result in results:
-            json_content = json.loads(result)
+
+        for line in file_content.splitlines():
+            json_content = json.loads(line)
             docs.append(json_content)
+
         collection = 'caseReports'
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
         mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
@@ -375,8 +306,7 @@ create_snapshot_task = DummyOperator(
     dag=dag,
 )
 
-# # Download json files from s3
-# # Update mongodb.
+# # Download json files from s3 and update mongodb.
 update_mongodb_task = PythonOperator(
     task_id='update_mongodb',
     python_callable=update_mongo,
