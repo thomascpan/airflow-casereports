@@ -2,28 +2,26 @@ from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
-import airflow.hooks.S3_hook
-import datetime
+from airflow.hooks.S3_hook import S3Hook
+from airflow.contrib.hooks.ftp_hook import FTPHook
+from airflow.contrib.hooks.mongo_hook import MongoHook
+from datetime import datetime, timedelta
 import os
 import logging
-import urllib
-from ftplib import FTP
 import tarfile
 import ntpath
 import shutil
+import fnmatch
+import glob
+import json
+import pubmed_parser as pp
 
-
-def upload_file_to_S3_with_hook(filename: str, key: str, bucket_name: str) -> None:
-    """Uploads file to s3.
-
-    Args:
-        filename (str): path of file.
-        key (str): S3 key that will point to the file.
-        bucket_name (str): Name of the bucket in which to store the file.
-
-    """
-    hook = airflow.hooks.S3_hook.S3Hook('my_conn_S3')
-    hook.load_file(filename, key, bucket_name=bucket_name, replace=True)
+# Setting up boto3 hook to AWS S3
+s3_hook = S3Hook('my_conn_S3')
+# Setting up FTP hook to pubmed ftp server
+ftp_hook = FTPHook('pubmed_ftp')
+# Setting up MongoDB hook to mlab server
+mongodb_hook = MongoHook('mongo_default')
 
 
 def extract_original_name(filepath: str) -> str:
@@ -58,36 +56,32 @@ def delete_dir(dirname: str) -> None:
     shutil.rmtree(dirname)
 
 
-def download_file(ftp: FTP, filename: str, dest_dir: str) -> str:
-    """Downloads file from FTP.
-
-    Args:
-        ftp (FTP): FTP instance.
-        filename (str): name of file to download.
-        dest_dir (str): destination directory.
-
-    Returns:
-        str: path of download file.
-    """
-    filepath = os.path.join(dest_dir, filename)
-    file = open(filepath, 'wb')
-    ftp.retrbinary("RETR " + filename, file.write)
-    file.close()
-    return filepath
-
-
-def extract_file(filepath: str, dest_dir: str) -> None:
+def extract_file(filepath: str, dest_dir: str, filter_pattern: str = None) -> None:
     """Extracts tar.gz file.
 
     Args:
         filepath (str): path of file.
         dest_dir (str): destination directory.
+        filter_pattern (str): extracts only files matching filter_pattern.
     """
     my_tar = tarfile.open(filepath)
     for member in my_tar.getmembers():
-        if "Case_Rep" in member.name:
+        if filter_pattern:
+            if filter_pattern in member.name:
+                my_tar.extract(member, dest_dir)
+        else:
             my_tar.extract(member, dest_dir)
     my_tar.close()
+
+
+def extract_file_case_reports(filepath: str, dest_dir: str) -> None:
+    """Extracts only case reports from tar.gz file.
+
+    Args:
+        filepath (str): path of file.
+        dest_dir (str): destination directory.
+    """
+    extract_file(filepath, dest_dir, "Case_Rep")
 
 
 def delete_file(filepath: str) -> None:
@@ -111,59 +105,198 @@ def make_tarfile(output_filepath: str, source_dir: str) -> None:
         tar.add(source_dir, arcname=os.path.basename(source_dir))
 
 
-def extract_pubmed_data() -> None:
-    """Extracts case-reports from pubmed data and stores result on S3
+def delete_temp() -> None:
+    """Deletes temporary directory that processes files
     """
-    logging.info("start import wrapper")
-    username = "anonymous"
-    password = "ifso6888@gmail.com"
-    ftp_url = 'ftp.ncbi.nlm.nih.gov'
-    ftp_path = 'pub/pmc/oa_bulk'
-    root_dir = '/usr/local/airflow'
-    temp_dir = root_dir + '/' + 'temp'
-
-    ftp = FTP(ftp_url)
-    ftp.login(username, password)
-    ftp.cwd(ftp_path)
-    filenames = ftp.nlst('*.xml.tar.gz')
-    try:
-        ftp.quit()
-    except:
-        None
-
-    for filename in filenames:
-        ftp = FTP(ftp_url)
-        ftp.login(username, password)
-        ftp.cwd(ftp_path)
-
-        create_dir(temp_dir)
-        filepath_tar_gz = download_file(ftp, filename, temp_dir)
-        filename_tar_gz = ntpath.basename(filepath_tar_gz)
-        o_path = extract_original_name(filepath_tar_gz)
-
-        extract_file(filepath_tar_gz, o_path)
-        delete_file(filepath_tar_gz)
-        make_tarfile(filepath_tar_gz, o_path)
-        upload_file_to_S3_with_hook(
-            filepath_tar_gz, filename_tar_gz, 'supreme-acrobat-data')
-        delete_dir(temp_dir)
-
-        try:
-            ftp.quit()
-        except:
-            None
-
-
-def extract_pubmed_data_failure_callback() -> None:
     root_dir = '/usr/local/airflow'
     temp_dir = root_dir + '/' + 'temp'
     delete_dir(temp_dir)
 
 
+def pubmed_get_text(pubmed_paragraph: dict) -> str:
+    """Extracts text from pubmed_paragraph
+
+    Args:
+        pubmed_paragraph (dist): dict with pubmed_paragraph info
+    """
+    return " ".join([p["text"] for p in pubmed_paragraph])
+
+
+def pubmed_get_authors(pubmed_xml: dict) -> list:
+    """Extracts authors from pubmed_paragraph
+
+    Args:
+        pubmed_xml (dist): dict with pubmed_xml info
+    """
+    return [" ".join(a[0:-1]) for a in pubmed_xml["author_list"]]
+
+
+def build_case_report_json(xml_path: str) -> json:
+    """Makes and returns a JSON object from pubmed XML files
+
+    Args:
+        xml_path (str): path to input XML file
+    """
+    pubmed_xml = pp.parse_pubmed_xml(xml_path)
+    pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
+    pubmed_references = pp.parse_pubmed_references(xml_path)
+    parse_pubmed_table = pp.parse_pubmed_table(xml_path)
+
+    case_report = {
+        "pmID": pubmed_xml["pmid"],
+        "messages": [],
+        "source_files": [],
+        "modifications": [],
+        "normalizations": [],
+        # ctime            : 1351154734.5055847,
+        "text": pubmed_get_text(pubmed_paragraph),
+        "entities": [],
+        "attributes": [],
+        # date : { type: Date, default: Date.now }
+        "relations": [],
+        "triggers": [],
+        "events": [],
+        "equivs": [],
+        "comments": [],
+        # sentence_offsets     : [],
+        # token_offsets    : [],
+        "action": None,
+        "abstract": pubmed_xml["abstract"],
+        "authors": pubmed_get_authors(pubmed_xml),
+        "keywords": [],
+        "introduction": None,
+        "discussion": None,
+        "references": []
+    }
+
+    return case_report
+
+
+def extract_pubmed_data() -> None:
+    """Extracts case-reports from pubmed data and stores result on S3
+    """
+
+    # to test specific tar files
+    pattern = 'non_comm_use.A-B.xml.tar.gz'
+    #pattern = "*.xml.tar.gz"
+    ftp_path = '/pub/pmc/oa_bulk'
+    root_dir = '/usr/local/airflow'
+    temp_dir = os.path.join(root_dir, 'temp')
+    bucket_name = 'supreme-acrobat-data'
+    prefix = 'case_reports/pubmed/original'
+
+    filenames = ftp_hook.list_directory(ftp_path)
+    filenames = list(
+        filter(lambda filename: fnmatch.fnmatch(filename, pattern), filenames))
+
+    for filename in filenames:
+        create_dir(temp_dir)
+        remote_path = os.path.join(ftp_path, filename)
+        local_path = os.path.join(temp_dir, filename)
+
+        ftp_hook.retrieve_file(remote_path, local_path)
+        o_path = extract_original_name(local_path)
+
+        extract_file_case_reports(local_path, o_path)
+        delete_file(local_path)
+        make_tarfile(local_path, o_path)
+        key = os.path.join(prefix, filename)
+        s3_hook.load_file(
+            local_path, key, bucket_name=bucket_name, replace=True)
+        delete_dir(temp_dir)
+
+
+def extract_pubmed_data_failure_callback(context) -> None:
+    delete_temp()
+
+
+def join_json_data(filenames: str, dest_path: str) -> None:
+    """Make a json file consisting of multiple json data
+
+    Args:
+        filenames (str): names of input json files
+        dest_path (str): directory for combined json output
+    """
+    outfile = open(dest_path, 'w')
+    for filename in filenames:
+        new_json = build_case_report_json(filename)
+        json.dump(new_json, outfile)
+        outfile.write('\n')
+
+    outfile.close()
+
+
+def transform_pubmed_data() -> None:
+    """Downloads tarfile from S3, forms JSON files from contents, and uploads to S3
+    """
+    root_dir = '/usr/local/airflow'
+    temp_dir = os.path.join(root_dir, 'temp')
+    src_path = 'case_reports/pubmed/original/'
+    dest_path = 'case_reports/pubmed/json/'
+    src_bucket_name = 'supreme-acrobat-data'
+    dest_bucket_name = 'supreme-acrobat-data'
+    wildcard_key = 'case_reports/pubmed/original/*.*'
+    klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
+    key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
+    create_dir(temp_dir)
+    filecount = 0
+
+    for key in key_matches:
+        filecount += 1
+        basename = os.path.basename(key)
+        local_path = os.path.join(temp_dir, basename)
+        o_path = extract_original_name(local_path)
+        o_path_basename = os.path.basename(o_path)
+
+        obj = s3_hook.get_key(key, src_bucket_name)
+        obj.download_file(local_path)
+        extract_file(local_path, temp_dir)
+        glob_path = os.path.join(o_path, "*", "*.nxml")
+
+        filenames = [f for f in glob.glob(glob_path)]
+        json_path = os.path.join(temp_dir, 'temp' + str(filecount) + '.json')
+        join_json_data(filenames, json_path)
+
+        key = os.path.join(dest_path, os.path.basename(
+            o_path_basename + ".json"))
+        s3_hook.load_file(
+            json_path, key, bucket_name=dest_bucket_name, replace=True)
+
+    delete_dir(temp_dir)
+
+
+def transform_pubmed_data_failure_callback(context) -> None:
+    delete_temp()
+
+
+def update_mongo() -> None:
+    """Updates MongoDB caseReports
+    """
+    src_path = 'case_reports/pubmed/json/'
+    src_bucket_name = 'supreme-acrobat-data'
+    wildcard_key = 'case_reports/pubmed/json/*.*'
+
+    klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
+    key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
+
+    for key in key_matches:
+        docs = []
+        obj = s3_hook.get_key(key, src_bucket_name)
+        file_content = obj.get()['Body'].read().decode('utf-8')
+
+        for line in file_content.splitlines():
+            json_content = json.loads(line)
+            docs.append(json_content)
+
+        collection = 'caseReports'
+        filter_docs = [{'pmID': doc['pmID']} for doc in docs]
+        mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
+
+
 default_args = {
     'owner': 'airflow',
-    'start_date': datetime.datetime(2020, 2, 1),
-    'retry_delay': datetime.timedelta(minutes=5)
+    'start_date': datetime(2020, 2, 1),
+    'retry_delay': timedelta(minutes=5)
 }
 
 dag = DAG(
@@ -176,31 +309,31 @@ dag = DAG(
 extract_pubmed_data_task = PythonOperator(
     task_id='extract_pubmed_data',
     python_callable=extract_pubmed_data,
-    on_failure_callback=extract_pubmed_data_failure_callback,
+    # on_failure_callback=extract_pubmed_data_failure_callback,
     dag=dag,
 )
 
-# Download from S3
-# Extract relevant values and create json files following case_report.js schema.
-#   i.e. PMC4716828.json
-#   Use pubmed parser: https://github.com/titipata/pubmed_parser
-# Upload to s3.
-transform_pubmed_data_task = DummyOperator(
+transform_pubmed_data_task = PythonOperator(
     task_id='transform_pubmed_data',
+    python_callable=transform_pubmed_data,
+    on_failure_callback=transform_pubmed_data_failure_callback,
     dag=dag,
 )
 
-# Create MongoDB snapshot and upload to S3
-create_snapshot_task = DummyOperator(
-    task_id='create_snapshot',
-    dag=dag,
-)
-
-# Download json files from s3
-# Update mongodb. 
-update_mongodb_task = DummyOperator(
+# # Download json files from s3 and update mongodb.
+update_mongodb_task = PythonOperator(
     task_id='update_mongodb',
+    python_callable=update_mongo,
     dag=dag,
 )
 
-extract_pubmed_data_task >> transform_pubmed_data_task >> create_snapshot_task >> update_mongodb_task
+def delete_objects(bucket, keys):
+        """
+        :param bucket: Name of the bucket in which you are going to delete object(s)
+        :type bucket: str
+        :param keys: The key(s) to delete from S3 bucket.
+        :type keys: str or list
+        """
+    pass
+
+extract_pubmed_data_task >> transform_pubmed_data_task >> update_mongodb_task
