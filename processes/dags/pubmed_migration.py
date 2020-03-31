@@ -114,7 +114,7 @@ def delete_temp() -> None:
 
 
 def build_case_report_json(xml_path: str) -> json:
-    """Makes and returns a JSON file from pubmed XML files
+    """Makes and returns a JSON object from pubmed XML files
 
     Args:
         xml_path (str): path to input XML file
@@ -300,12 +300,6 @@ transform_pubmed_data_task = PythonOperator(
     dag=dag,
 )
 
-# # Create MongoDB snapshot and upload to S3
-create_snapshot_task = DummyOperator(
-    task_id='create_snapshot',
-    dag=dag,
-)
-
 # # Download json files from s3 and update mongodb.
 update_mongodb_task = PythonOperator(
     task_id='update_mongodb',
@@ -313,4 +307,13 @@ update_mongodb_task = PythonOperator(
     dag=dag,
 )
 
-extract_pubmed_data_task >> transform_pubmed_data_task >> create_snapshot_task >> update_mongodb_task
+def delete_objects(bucket, keys):
+        """
+        :param bucket: Name of the bucket in which you are going to delete object(s)
+        :type bucket: str
+        :param keys: The key(s) to delete from S3 bucket.
+        :type keys: str or list
+        """
+    pass
+
+extract_pubmed_data_task >> transform_pubmed_data_task >> update_mongodb_task
