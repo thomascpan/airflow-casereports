@@ -113,6 +113,24 @@ def delete_temp() -> None:
     delete_dir(temp_dir)
 
 
+def pubmed_get_text(pubmed_paragraph: dict) -> str:
+    """Extracts text from pubmed_paragraph
+
+    Args:
+        pubmed_paragraph (dist): dict with pubmed_paragraph info
+    """
+    return " ".join([p["text"] for p in pubmed_paragraph])
+
+
+def pubmed_get_authors(pubmed_xml: dict) -> list:
+    """Extracts authors from pubmed_paragraph
+
+    Args:
+        pubmed_xml (dist): dict with pubmed_xml info
+    """
+    return [" ".join(a[0:-1]) for a in pubmed_xml["author_list"]]
+
+
 def build_case_report_json(xml_path: str) -> json:
     """Makes and returns a JSON file from pubmed XML files
 
@@ -122,8 +140,8 @@ def build_case_report_json(xml_path: str) -> json:
     pubmed_xml = pp.parse_pubmed_xml(xml_path)
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
+    parse_pubmed_table = pp.parse_pubmed_table(xml_path)
 
-    text = " ".join([p["text"] for p in pubmed_paragraph])
     case_report = {
         "pmID": pubmed_xml["pmid"],
         "messages": [],
@@ -131,7 +149,7 @@ def build_case_report_json(xml_path: str) -> json:
         "modifications": [],
         "normalizations": [],
         # ctime            : 1351154734.5055847,
-        "text": text,
+        "text": pubmed_get_text(pubmed_paragraph),
         "entities": [],
         "attributes": [],
         # date : { type: Date, default: Date.now }
@@ -144,7 +162,7 @@ def build_case_report_json(xml_path: str) -> json:
         # token_offsets    : [],
         "action": None,
         "abstract": pubmed_xml["abstract"],
-        "authors": pubmed_xml["author_list"],
+        "authors": pubmed_get_authors(pubmed_xml),
         "keywords": [],
         "introduction": None,
         "discussion": None,
@@ -152,6 +170,7 @@ def build_case_report_json(xml_path: str) -> json:
     }
 
     return case_report
+
 
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
@@ -191,7 +210,7 @@ def extract_pubmed_data_failure_callback(context) -> None:
     delete_temp()
 
 
-def join_json_data (filenames: str, dest_path: str) -> None:
+def join_json_data(filenames: str, dest_path: str) -> None:
     """Make a json file consisting of multiple json data
 
     Args:
@@ -205,7 +224,6 @@ def join_json_data (filenames: str, dest_path: str) -> None:
         outfile.write('\n')
 
     outfile.close()
-
 
 
 def transform_pubmed_data() -> None:
@@ -236,11 +254,13 @@ def transform_pubmed_data() -> None:
         glob_path = os.path.join(o_path, "*", "*.nxml")
 
         filenames = [f for f in glob.glob(glob_path)]
-        json_path = os.path.join(temp_dir, 'temp'+ str(filecount) + '.json')
+        json_path = os.path.join(temp_dir, 'temp' + str(filecount) + '.json')
         join_json_data(filenames, json_path)
 
-        key = os.path.join(dest_path, os.path.basename(o_path_basename + ".json"))
-        s3_hook.load_file(json_path, key, bucket_name=dest_bucket_name, replace=True)
+        key = os.path.join(dest_path, os.path.basename(
+            o_path_basename + ".json"))
+        s3_hook.load_file(
+            json_path, key, bucket_name=dest_bucket_name, replace=True)
 
     delete_dir(temp_dir)
 
