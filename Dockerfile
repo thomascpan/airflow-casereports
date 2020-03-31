@@ -5,7 +5,7 @@
 # SOURCE: https://github.com/puckel/docker-airflow
 
 FROM python:3.7-slim-buster
-LABEL maintainer="Puckel_"
+MAINTAINER "thomascpan@g.ucla.edu"
 
 # Never prompt the user for choices on installation/configuration of packages
 ENV DEBIAN_FRONTEND noninteractive

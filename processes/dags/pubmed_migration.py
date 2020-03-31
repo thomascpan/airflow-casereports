@@ -185,7 +185,7 @@ def extract_pubmed_data() -> None:
     bucket_name = 'supreme-acrobat-data'
     prefix = 'case_reports/pubmed/original'
 
-    #deleting old entries in the bucket
+    # deleting old entries in the bucket
     dest_path = 'case_reports/pubmed/original/'
     wildcard = 'case_reports/pubmed/original/*.*'
     old_klist = s3_hook.list_keys(bucket_name, prefix=dest_path, delimiter='/')
@@ -250,7 +250,7 @@ def transform_pubmed_data() -> None:
     create_dir(temp_dir)
     filecount = 0
 
-    #deleting old entries in the JSON folder
+    # deleting old entries in the JSON folder
     wildcard = 'case_reports/pubmed/json/*.*'
     old_klist = s3_hook.list_keys(dest_bucket_name, prefix=dest_path, delimiter='')
     if isinstance(old_klist, list):

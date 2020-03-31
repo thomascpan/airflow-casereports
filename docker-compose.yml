@@ -12,10 +12,9 @@ services:
       - "5432:5432"
 
   webserver:
-    image: puckel/docker-airflow:1.10.9
+    image: thomascpan/docker-airflow-casereports:latest
     build:
       context: .
-      dockerfile: Dockerfile
       args:
         AIRFLOW_DEPS: gcp_api,s3
         PYTHON_DEPS: sqlalchemy==1.2.0
