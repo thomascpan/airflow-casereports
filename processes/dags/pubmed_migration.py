@@ -185,6 +185,14 @@ def extract_pubmed_data() -> None:
     bucket_name = 'supreme-acrobat-data'
     prefix = 'case_reports/pubmed/original'
 
+    #deleting old entries in the bucket
+    dest_path = 'case_reports/pubmed/original/'
+    wildcard = 'case_reports/pubmed/original/*.*'
+    old_klist = s3_hook.list_keys(bucket_name, prefix=dest_path, delimiter='/')
+    old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
+    if len(old_kmatches) > 0:
+        s3_hook.delete_objects(bucket_name, old_kmatches)
+
     filenames = ftp_hook.list_directory(ftp_path)
     filenames = list(
         filter(lambda filename: fnmatch.fnmatch(filename, pattern), filenames))
@@ -240,6 +248,15 @@ def transform_pubmed_data() -> None:
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
     create_dir(temp_dir)
     filecount = 0
+
+    #deleting old entries in the JSON folder
+    wildcard = 'case_reports/pubmed/json/*.*'
+    old_klist = s3_hook.list_keys(dest_bucket_name, prefix=dest_path, delimiter='')
+    logging.info(old_klist)
+    old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
+    logging.info(old_kmatches)
+    if len(old_kmatches) > 0:
+        s3_hook.delete_objects(dest_bucket_name, old_kmatches)
 
     for key in key_matches:
         filecount += 1
@@ -326,14 +343,5 @@ update_mongodb_task = PythonOperator(
     python_callable=update_mongo,
     dag=dag,
 )
-
-def delete_objects(bucket, keys):
-        """
-        :param bucket: Name of the bucket in which you are going to delete object(s)
-        :type bucket: str
-        :param keys: The key(s) to delete from S3 bucket.
-        :type keys: str or list
-        """
-    pass
 
 extract_pubmed_data_task >> transform_pubmed_data_task >> update_mongodb_task
