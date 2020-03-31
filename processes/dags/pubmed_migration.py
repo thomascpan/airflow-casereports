@@ -189,9 +189,10 @@ def extract_pubmed_data() -> None:
     dest_path = 'case_reports/pubmed/original/'
     wildcard = 'case_reports/pubmed/original/*.*'
     old_klist = s3_hook.list_keys(bucket_name, prefix=dest_path, delimiter='/')
-    old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
-    if len(old_kmatches) > 0:
-        s3_hook.delete_objects(bucket_name, old_kmatches)
+    if isinstance(old_klist, list):
+        old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
+        if len(old_kmatches) > 0:
+            s3_hook.delete_objects(bucket_name, old_kmatches)
 
     filenames = ftp_hook.list_directory(ftp_path)
     filenames = list(
@@ -252,11 +253,10 @@ def transform_pubmed_data() -> None:
     #deleting old entries in the JSON folder
     wildcard = 'case_reports/pubmed/json/*.*'
     old_klist = s3_hook.list_keys(dest_bucket_name, prefix=dest_path, delimiter='')
-    logging.info(old_klist)
-    old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
-    logging.info(old_kmatches)
-    if len(old_kmatches) > 0:
-        s3_hook.delete_objects(dest_bucket_name, old_kmatches)
+    if isinstance(old_klist, list):
+        old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
+        if len(old_kmatches) > 0:
+            s3_hook.delete_objects(dest_bucket_name, old_kmatches)
 
     for key in key_matches:
         filecount += 1
