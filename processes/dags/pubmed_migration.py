@@ -16,8 +16,6 @@ import glob
 import json
 import pubmed_parser as pp
 
-# Setting up boto3 hook to AWS S3
-s3_hook = S3Hook('my_conn_S3')
 # Setting up FTP hook to pubmed ftp server
 ftp_hook = FTPHook('pubmed_ftp')
 # Setting up MongoDB hook to mlab server
@@ -48,12 +46,13 @@ def create_dir(dirname: str) -> None:
 
 
 def delete_dir(dirname: str) -> None:
-    """Deletes directory even if exist
+    """Deletes directory even if it exists or not
 
     Args:
         dirname (str): name of directory.
     """
-    shutil.rmtree(dirname)
+    if os.path.exists(dirname) and os.path.isdir(dirname):
+        shutil.rmtree(dirname)
 
 
 def extract_file(filepath: str, dest_dir: str, filter_pattern: str = None) -> None:
@@ -105,11 +104,11 @@ def make_tarfile(output_filepath: str, source_dir: str) -> None:
         tar.add(source_dir, arcname=os.path.basename(source_dir))
 
 
-def delete_temp() -> None:
+def delete_temp(filename: str) -> None:
     """Deletes temporary directory that processes files
     """
     root_dir = '/usr/local/airflow'
-    temp_dir = root_dir + '/' + 'temp'
+    temp_dir = root_dir + '/' + filename
     delete_dir(temp_dir)
 
 
@@ -175,33 +174,26 @@ def build_case_report_json(xml_path: str) -> json:
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
     """
-
     # to test specific tar files
     pattern = 'non_comm_use.A-B.xml.tar.gz'
     #pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
-    temp_dir = os.path.join(root_dir, 'temp')
-    bucket_name = 'supreme-acrobat-data'
+    pubmed_dir = os.path.join(root_dir, 'pubmed')
+    original_dir = os.path.join(pubmed_dir, 'original')
     prefix = 'case_reports/pubmed/original'
 
-    # deleting old entries in the bucket
-    dest_path = 'case_reports/pubmed/original/'
-    wildcard = 'case_reports/pubmed/original/*.*'
-    old_klist = s3_hook.list_keys(bucket_name, prefix=dest_path, delimiter='/')
-    if isinstance(old_klist, list):
-        old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
-        if len(old_kmatches) > 0:
-            s3_hook.delete_objects(bucket_name, old_kmatches)
+    delete_dir(original_dir)
+    create_dir(pubmed_dir)
+    create_dir(original_dir)
 
     filenames = ftp_hook.list_directory(ftp_path)
     filenames = list(
         filter(lambda filename: fnmatch.fnmatch(filename, pattern), filenames))
 
     for filename in filenames:
-        create_dir(temp_dir)
         remote_path = os.path.join(ftp_path, filename)
-        local_path = os.path.join(temp_dir, filename)
+        local_path = os.path.join(original_dir, filename)
 
         ftp_hook.retrieve_file(remote_path, local_path)
         o_path = extract_original_name(local_path)
@@ -209,14 +201,10 @@ def extract_pubmed_data() -> None:
         extract_file_case_reports(local_path, o_path)
         delete_file(local_path)
         make_tarfile(local_path, o_path)
-        key = os.path.join(prefix, filename)
-        s3_hook.load_file(
-            local_path, key, bucket_name=bucket_name, replace=True)
-        delete_dir(temp_dir)
-
+        delete_dir(o_path)
 
 def extract_pubmed_data_failure_callback(context) -> None:
-    delete_temp()
+    delete_temp('pubmed/original')
 
 
 def join_json_data(filenames: str, dest_path: str) -> None:
@@ -239,71 +227,49 @@ def transform_pubmed_data() -> None:
     """Downloads tarfile from S3, forms JSON files from contents, and uploads to S3
     """
     root_dir = '/usr/local/airflow'
-    temp_dir = os.path.join(root_dir, 'temp')
-    src_path = 'case_reports/pubmed/original/'
-    dest_path = 'case_reports/pubmed/json/'
-    src_bucket_name = 'supreme-acrobat-data'
-    dest_bucket_name = 'supreme-acrobat-data'
-    wildcard_key = 'case_reports/pubmed/original/*.*'
-    klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
-    key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
-    create_dir(temp_dir)
-    filecount = 0
+    pubmed_dir = os.path.join(root_dir, 'pubmed')
+    json_dir = os.path.join(pubmed_dir, 'json')
+    original_dir = os.path.join(pubmed_dir, 'original')
 
-    # deleting old entries in the JSON folder
-    wildcard = 'case_reports/pubmed/json/*.*'
-    old_klist = s3_hook.list_keys(dest_bucket_name, prefix=dest_path, delimiter='')
-    if isinstance(old_klist, list):
-        old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
-        if len(old_kmatches) > 0:
-            s3_hook.delete_objects(dest_bucket_name, old_kmatches)
+    delete_dir(json_dir)
+    create_dir(pubmed_dir)
+    create_dir(json_dir)
 
-    for key in key_matches:
-        filecount += 1
-        basename = os.path.basename(key)
-        local_path = os.path.join(temp_dir, basename)
-        o_path = extract_original_name(local_path)
-        o_path_basename = os.path.basename(o_path)
+    file_path = os.path.join(original_dir, "*.xml.tar.gz")
+    filenames = [f for f in glob.glob(file_path)]
 
-        obj = s3_hook.get_key(key, src_bucket_name)
-        obj.download_file(local_path)
-        extract_file(local_path, temp_dir)
+    for filename in filenames:
+        basename = os.path.basename(filename) #non_comm.xml.tar.gz
+        local_path = os.path.join(original_dir, basename) #/usr/local/airflow/pubmed/original/non_comm_use.A-B.xml.tar.gz
+        dest_path = os.path.join(json_dir, basename) #/usr/local/airflow/pubmed/json/non_comm_use.A-B.xml.tar.gz
+        o_path = extract_original_name(dest_path) #/usr/local/airflow/pubmed/json/non_comm_use.A-B.xml
+        o_path_basename = os.path.basename(o_path) #non_comm_use.A-B.xml
+        extract_file(local_path, json_dir)
         glob_path = os.path.join(o_path, "*", "*.nxml")
-
         filenames = [f for f in glob.glob(glob_path)]
-        json_path = os.path.join(temp_dir, 'temp' + str(filecount) + '.json')
+        json_path = os.path.join(json_dir, o_path_basename + '.json')
         join_json_data(filenames, json_path)
-
-        key = os.path.join(dest_path, os.path.basename(
-            o_path_basename + ".json"))
-        s3_hook.load_file(
-            json_path, key, bucket_name=dest_bucket_name, replace=True)
-
-    delete_dir(temp_dir)
-
+        delete_dir(o_path)
 
 def transform_pubmed_data_failure_callback(context) -> None:
-    delete_temp()
+    delete_temp('pubmed/json')
 
 
 def update_mongo() -> None:
     """Updates MongoDB caseReports
     """
-    src_path = 'case_reports/pubmed/json/'
-    src_bucket_name = 'supreme-acrobat-data'
-    wildcard_key = 'case_reports/pubmed/json/*.*'
+    root_dir = '/usr/local/airflow'
+    pubmed_dir = os.path.join(root_dir, 'pubmed')
+    json_dir = os.path.join(pubmed_dir, 'json')
 
-    klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
-    key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
+    file_path = os.path.join(json_dir, "*.json")
+    filenames = [f for f in glob.glob(file_path)]
 
-    for key in key_matches:
+    for filename in filenames:
         docs = []
-        obj = s3_hook.get_key(key, src_bucket_name)
-        file_content = obj.get()['Body'].read().decode('utf-8')
-
-        for line in file_content.splitlines():
-            json_content = json.loads(line)
-            docs.append(json_content)
+        with open(filename) as f:
+            for line in f:
+                docs.append(json.loads(line))
 
         collection = 'caseReports'
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
