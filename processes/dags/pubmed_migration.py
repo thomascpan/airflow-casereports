@@ -326,7 +326,7 @@ dag = DAG(
 extract_pubmed_data_task = PythonOperator(
     task_id='extract_pubmed_data',
     python_callable=extract_pubmed_data,
-    # on_failure_callback=extract_pubmed_data_failure_callback,
+    on_failure_callback=extract_pubmed_data_failure_callback,
     dag=dag,
 )
 
