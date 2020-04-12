@@ -15,10 +15,32 @@ import glob
 import json
 import pubmed_parser as pp
 
-# Setting up FTP hook to pubmed ftp server
-ftp_hook = FTPHook('pubmed_ftp')
 # Setting up MongoDB hook to mlab server
 mongodb_hook = MongoHook('mongo_default')
+ftp_conn_id = "pubmed_ftp"
+
+
+def ftp_connect(ftp_conn_id: str) -> FTPHook:
+    """Connect to FTP.
+
+    Args:
+        ftp_conn_id (str): ftp conn_id.
+    Returns:
+        FTPHook: FTPHook instance.
+    """
+    return FTPHook(ftp_conn_id)
+
+
+def ftp_disconnect(hook: FTPHook) -> None:
+    """Disconnect from FTP.
+
+    Args:
+        hook (FTPHook): FTPHook instance.
+    """
+    try:
+        hook.close_conn()
+    except:
+        None
 
 
 def extract_original_name(filepath: str) -> str:
@@ -120,6 +142,7 @@ def pubmed_get_authors(pubmed_xml: dict) -> list:
     """
     return [" ".join(a[0:-1]) for a in pubmed_xml["author_list"]]
 
+
 def build_case_report_json(xml_path: str) -> json:
     """Makes and returns a JSON object from pubmed XML files
 
@@ -178,11 +201,14 @@ def extract_pubmed_data() -> None:
     create_dir(pubmed_dir)
     create_dir(original_dir)
 
+    ftp_hook = ftp_connect(ftp_conn_id)
     filenames = ftp_hook.list_directory(ftp_path)
+    ftp_disconnect(ftp_hook)
     filenames = list(
         filter(lambda filename: fnmatch.fnmatch(filename, pattern), filenames))
 
     for filename in filenames:
+        ftp_hook = ftp_connect(ftp_conn_id)
         remote_path = os.path.join(ftp_path, filename)
         local_path = os.path.join(original_dir, filename)
 
@@ -193,6 +219,9 @@ def extract_pubmed_data() -> None:
         delete_file(local_path)
         make_tarfile(local_path, o_path)
         delete_dir(o_path)
+
+        ftp_disconnect(ftp_hook)
+
 
 def extract_pubmed_data_failure_callback(context) -> None:
     pass
@@ -241,6 +270,7 @@ def transform_pubmed_data() -> None:
         json_path = os.path.join(json_dir, o_path_basename + '.json')
         join_json_data(filenames, json_path)
         delete_dir(o_path)
+
 
 def transform_pubmed_data_failure_callback(context) -> None:
     pass
