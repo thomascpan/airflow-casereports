@@ -2,7 +2,6 @@ from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
-from airflow.hooks.S3_hook import S3Hook
 from airflow.contrib.hooks.ftp_hook import FTPHook
 from airflow.contrib.hooks.mongo_hook import MongoHook
 from datetime import datetime, timedelta
@@ -167,8 +166,8 @@ def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on local server
     """
     # to test specific tar files
-    pattern = 'non_comm_use.A-B.xml.tar.gz'
-    #pattern = "*.xml.tar.gz"
+    #pattern = 'non_comm_use.A-B.xml.tar.gz'
+    pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     pubmed_dir = os.path.join(root_dir, 'pubmed')
@@ -216,7 +215,7 @@ def join_json_data(filenames: str, dest_path: str) -> None:
 
 
 def transform_pubmed_data() -> None:
-    """Downloads tarfile from S3, forms JSON files from contents
+    """Downloads forms JSON files from contents of tarfile
     """
     root_dir = '/usr/local/airflow'
     pubmed_dir = os.path.join(root_dir, 'pubmed')
