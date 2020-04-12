@@ -133,6 +133,7 @@ def build_case_report_json(xml_path: str) -> json:
 
     case_report = {
         "pmID": pubmed_xml["pmid"],
+        "title": pubmed_xml["full_title"]
         "messages": [],
         "source_files": [],
         "modifications": [],

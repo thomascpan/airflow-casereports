@@ -121,7 +121,6 @@ def pubmed_get_authors(pubmed_xml: dict) -> list:
     """
     return [" ".join(a[0:-1]) for a in pubmed_xml["author_list"]]
 
-
 def build_case_report_json(xml_path: str) -> json:
     """Makes and returns a JSON object from pubmed XML files
 
@@ -135,6 +134,7 @@ def build_case_report_json(xml_path: str) -> json:
 
     case_report = {
         "pmID": pubmed_xml["pmid"],
+        "title": pubmed_xml["full_title"],
         "messages": [],
         "source_files": [],
         "modifications": [],
