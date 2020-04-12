@@ -177,8 +177,7 @@ def extract_pubmed_data() -> None:
     """
 
     # to test specific tar files
-    pattern = 'non_comm_use.A-B.xml.tar.gz'
-    #pattern = "*.xml.tar.gz"
+    pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
