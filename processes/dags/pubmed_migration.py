@@ -165,9 +165,6 @@ def build_case_report_json(xml_path: str) -> json:
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
     """
-
-    # to test specific tar files
-    #pattern = 'non_comm_use.A-B.xml.tar.gz'
     pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
