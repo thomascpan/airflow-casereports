@@ -125,13 +125,31 @@ def make_tarfile(output_filepath: str, source_dir: str) -> None:
         tar.add(source_dir, arcname=os.path.basename(source_dir))
 
 
-def pubmed_get_text(pubmed_paragraph: dict) -> str:
+def pubmed_get_text(pubmed_paragraph: list) -> str:
     """Extracts text from pubmed_paragraph
 
     Args:
-        pubmed_paragraph (dist): dict with pubmed_paragraph info
+        pubmed_paragraph (list): list with pubmed_paragraph info
+
+    Returns:
+        str: pubmed text body.
     """
-    return " ".join([p["text"] for p in pubmed_paragraph])
+    result = " ".join([p.get("text") for p in pubmed_paragraph])
+    return result or None
+
+
+def get_author(author: list) -> str:
+    """Converts author in list format to string.
+
+    Args:
+        author (list): author in list format (['last_name_1', 'first_name_1', 'aff_key_1'])
+
+    Returns:
+        str: The original name
+    """
+    first_name = author[1] or ""
+    last_name = author[0] or ""
+    return ("%s %s" % (first_name, last_name)).strip()
 
 
 def pubmed_get_authors(pubmed_xml: dict) -> list:
@@ -139,8 +157,15 @@ def pubmed_get_authors(pubmed_xml: dict) -> list:
 
     Args:
         pubmed_xml (dist): dict with pubmed_xml info
+
+    Returns:
+        list: pubmed authors.
     """
-    return [" ".join(a[0:-1]) for a in pubmed_xml["author_list"]]
+    author_list = pubmed_xml.get("author_list")
+    result = None
+    if author_list:
+        result = [get_author(a) for a in author_list]
+    return result
 
 
 def build_case_report_json(xml_path: str) -> json:
@@ -155,8 +180,8 @@ def build_case_report_json(xml_path: str) -> json:
     parse_pubmed_table = pp.parse_pubmed_table(xml_path)
 
     case_report = {
-        "pmID": pubmed_xml["pmid"],
-        "title": pubmed_xml["full_title"],
+        "pmID": pubmed_xml.get("pmid"),
+        "title": pubmed_xml.get("full_title"),
         "messages": [],
         "source_files": [],
         "modifications": [],
@@ -174,7 +199,7 @@ def build_case_report_json(xml_path: str) -> json:
         # sentence_offsets     : [],
         # token_offsets    : [],
         "action": None,
-        "abstract": pubmed_xml["abstract"],
+        "abstract": pubmed_xml.get("abstract"),
         "authors": pubmed_get_authors(pubmed_xml),
         "keywords": [],
         "introduction": None,
