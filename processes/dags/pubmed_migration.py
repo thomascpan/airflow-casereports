@@ -15,6 +15,7 @@ import fnmatch
 import glob
 import json
 import pubmed_parser as pp
+from pymongo.errors import BulkWriteError
 
 # Setting up boto3 hook to AWS S3
 s3_hook = S3Hook('my_conn_S3')
@@ -348,7 +349,13 @@ def update_mongo() -> None:
 
         collection = 'caseReports'
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
-        mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
+
+        try:
+            mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
+        except BulkWriteError as bwe:
+            logging.info(bwe.details)
+            logging.info(bwe.details['writeErrors'])
+            raise bwe
 
 
 default_args = {
