@@ -1,7 +1,7 @@
 # airflow-casereports
 
-docker-compose up -d
-docker stop $(docker ps -a -q)
+docker-compose up -d --build
+docker-compose down
 Go to http://localhost:8080/
 
 

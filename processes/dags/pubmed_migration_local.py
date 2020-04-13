@@ -2,7 +2,6 @@ from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
-from airflow.hooks.S3_hook import S3Hook
 from airflow.contrib.hooks.ftp_hook import FTPHook
 from airflow.contrib.hooks.mongo_hook import MongoHook
 from datetime import datetime, timedelta
@@ -16,10 +15,32 @@ import glob
 import json
 import pubmed_parser as pp
 
-# Setting up FTP hook to pubmed ftp server
-ftp_hook = FTPHook('pubmed_ftp')
 # Setting up MongoDB hook to mlab server
 mongodb_hook = MongoHook('mongo_default')
+ftp_conn_id = "pubmed_ftp"
+
+
+def ftp_connect(ftp_conn_id: str) -> FTPHook:
+    """Connect to FTP.
+
+    Args:
+        ftp_conn_id (str): ftp conn_id.
+    Returns:
+        FTPHook: FTPHook instance.
+    """
+    return FTPHook(ftp_conn_id)
+
+
+def ftp_disconnect(hook: FTPHook) -> None:
+    """Disconnect from FTP.
+
+    Args:
+        hook (FTPHook): FTPHook instance.
+    """
+    try:
+        hook.close_conn()
+    except:
+        None
 
 
 def extract_original_name(filepath: str) -> str:
@@ -104,13 +125,31 @@ def make_tarfile(output_filepath: str, source_dir: str) -> None:
         tar.add(source_dir, arcname=os.path.basename(source_dir))
 
 
-def pubmed_get_text(pubmed_paragraph: dict) -> str:
+def pubmed_get_text(pubmed_paragraph: list) -> str:
     """Extracts text from pubmed_paragraph
 
     Args:
-        pubmed_paragraph (dist): dict with pubmed_paragraph info
+        pubmed_paragraph (list): list with pubmed_paragraph info
+
+    Returns:
+        str: pubmed text body.
     """
-    return " ".join([p["text"] for p in pubmed_paragraph])
+    result = " ".join([p.get("text") for p in pubmed_paragraph])
+    return result or None
+
+
+def get_author(author: list) -> str:
+    """Converts author in list format to string.
+
+    Args:
+        author (list): author in list format (['last_name_1', 'first_name_1', 'aff_key_1'])
+
+    Returns:
+        str: The original name
+    """
+    first_name = author[1] or ""
+    last_name = author[0] or ""
+    return ("%s %s" % (first_name, last_name)).strip()
 
 
 def pubmed_get_authors(pubmed_xml: dict) -> list:
@@ -118,8 +157,16 @@ def pubmed_get_authors(pubmed_xml: dict) -> list:
 
     Args:
         pubmed_xml (dist): dict with pubmed_xml info
+
+    Returns:
+        list: pubmed authors.
     """
-    return [" ".join(a[0:-1]) for a in pubmed_xml["author_list"]]
+    author_list = pubmed_xml.get("author_list")
+    result = None
+    if author_list:
+        result = [get_author(a) for a in author_list]
+    return result
+
 
 def build_case_report_json(xml_path: str) -> json:
     """Makes and returns a JSON object from pubmed XML files
@@ -133,8 +180,8 @@ def build_case_report_json(xml_path: str) -> json:
     parse_pubmed_table = pp.parse_pubmed_table(xml_path)
 
     case_report = {
-        "pmID": pubmed_xml["pmid"],
-        "title": pubmed_xml["full_title"],
+        "pmID": pubmed_xml.get("pmid"),
+        "title": pubmed_xml.get("full_title"),
         "messages": [],
         "source_files": [],
         "modifications": [],
@@ -152,7 +199,7 @@ def build_case_report_json(xml_path: str) -> json:
         # sentence_offsets     : [],
         # token_offsets    : [],
         "action": None,
-        "abstract": pubmed_xml["abstract"],
+        "abstract": pubmed_xml.get("abstract"),
         "authors": pubmed_get_authors(pubmed_xml),
         "keywords": [],
         "introduction": None,
@@ -167,8 +214,8 @@ def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on local server
     """
     # to test specific tar files
-    pattern = 'non_comm_use.A-B.xml.tar.gz'
-    #pattern = "*.xml.tar.gz"
+    #pattern = 'non_comm_use.A-B.xml.tar.gz'
+    pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     pubmed_dir = os.path.join(root_dir, 'pubmed')
@@ -179,11 +226,14 @@ def extract_pubmed_data() -> None:
     create_dir(pubmed_dir)
     create_dir(original_dir)
 
+    ftp_hook = ftp_connect(ftp_conn_id)
     filenames = ftp_hook.list_directory(ftp_path)
+    ftp_disconnect(ftp_hook)
     filenames = list(
         filter(lambda filename: fnmatch.fnmatch(filename, pattern), filenames))
 
     for filename in filenames:
+        ftp_hook = ftp_connect(ftp_conn_id)
         remote_path = os.path.join(ftp_path, filename)
         local_path = os.path.join(original_dir, filename)
 
@@ -194,6 +244,9 @@ def extract_pubmed_data() -> None:
         delete_file(local_path)
         make_tarfile(local_path, o_path)
         delete_dir(o_path)
+
+        ftp_disconnect(ftp_hook)
+
 
 def extract_pubmed_data_failure_callback(context) -> None:
     pass
@@ -216,7 +269,7 @@ def join_json_data(filenames: str, dest_path: str) -> None:
 
 
 def transform_pubmed_data() -> None:
-    """Downloads tarfile from S3, forms JSON files from contents
+    """Downloads forms JSON files from contents of tarfile
     """
     root_dir = '/usr/local/airflow'
     pubmed_dir = os.path.join(root_dir, 'pubmed')
@@ -242,6 +295,7 @@ def transform_pubmed_data() -> None:
         json_path = os.path.join(json_dir, o_path_basename + '.json')
         join_json_data(filenames, json_path)
         delete_dir(o_path)
+
 
 def transform_pubmed_data_failure_callback(context) -> None:
     pass
