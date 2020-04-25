@@ -306,9 +306,9 @@ def transform_pubmed_data() -> None:
         o_path_basename = os.path.basename(o_path)
         extract_file(local_path, json_dir)
         glob_path = os.path.join(o_path, "*", "*.nxml")
-        filenames = [f for f in glob.glob(glob_path)]
+        fns = [f for f in glob.glob(glob_path)]
         json_path = os.path.join(json_dir, o_path_basename + '.json')
-        join_json_data(filenames, json_path)
+        join_json_data(fns, json_path)
         delete_dir(o_path)
 
 
