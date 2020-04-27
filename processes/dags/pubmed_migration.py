@@ -188,16 +188,28 @@ def pubmed_get_subjects(pubmed_xml: dict) -> list:
     return list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
 
 
-def get_article_type(keywords: list) -> str:
-    """Extracts article_type from keywords if exist
+def get_keywords(subjects: list) -> list:
+    """Extracts keywords from subjects if exist
 
     Args:
-        keywords (list): list of keywords
+        subjects (list): list of subjects
+
+    Returns:
+        list: pubmed keywords.
+    """
+    return subjects[1:] if subjects else []
+
+
+def get_article_type(subjects: list) -> str:
+    """Extracts article_type from subjects if exist
+
+    Args:
+        subjects (list): list of subjects
 
     Returns:
         str: pubmed article type.
     """
-    return keywords[0] if keywords else None
+    return subjects[0] if subjects else None
 
 
 def build_case_report_json(xml_path: str) -> json:
@@ -208,6 +220,10 @@ def build_case_report_json(xml_path: str) -> json:
     pubmed_xml = pp.parse_pubmed_xml(xml_path)
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
+
+    subjects = pubmed_get_subjects(pubmed_xml)
+    keywords = get_keywords(subjects)
+    article_type = get_article_type(subjects)
 
     case_report = {
         "pmID": pubmed_xml.get("pmid"),
@@ -232,10 +248,12 @@ def build_case_report_json(xml_path: str) -> json:
         "action": None,
         "abstract": pubmed_xml.get("abstract"),
         "authors": pubmed_get_authors(pubmed_xml),
-        "keywords": pubmed_get_subjects(pubmed_xml),
+        "keywords": keywords,
         "introduction": None,
         "discussion": None,
-        "references": []
+        "references": [],
+
+        "article_type": article_type  # For filtering. Will remove.
     }
 
     return case_report
@@ -326,10 +344,11 @@ def join_json_data(filenames: str, dest_path: str) -> None:
     for filename in filenames:
         new_json = build_case_report_json(filename)
         keywords = new_json.get("keywords")
-        article_type = get_article_type(keywords)
+        article_type = new_json.get("article_type")
 
         if (article_type_filter(article_type, selected_article_types) and
                 (subject_filter(keywords, selected_subjects))):
+            del new_json["article_type"]
             json.dump(new_json, outfile)
             outfile.write('\n')
 
