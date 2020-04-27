@@ -136,7 +136,7 @@ def update_mongo() -> None:
             json_content = json.loads(line)
             docs.append(json_content)
 
-        collection = 'caseReports'
+        collection = 'casereports'
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
 
         try:
