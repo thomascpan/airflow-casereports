@@ -3,7 +3,6 @@ from airflow.operators.bash_operator import BashOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.hooks.S3_hook import S3Hook
-from airflow.contrib.hooks.mongo_hook import MongoHook
 from datetime import datetime, timedelta
 import os
 import logging
@@ -15,8 +14,6 @@ from utils import *
 
 # Setting up boto3 hook to AWS S3
 s3_hook = S3Hook('my_conn_S3')
-# Setting up MongoDB hook to mlab server
-mongodb_hook = MongoHook('mongo_default')
 
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
@@ -143,7 +140,7 @@ def update_mongo() -> None:
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
 
         try:
-            mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
+            mongo_insert(collection, docs, filter_docs)
         except BulkWriteError as bwe:
             logging.info(bwe.details)
             logging.info(bwe.details['writeErrors'])

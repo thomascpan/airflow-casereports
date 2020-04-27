@@ -2,16 +2,13 @@ from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
-from airflow.contrib.hooks.mongo_hook import MongoHook
 from datetime import datetime, timedelta
 import os
 import logging
 import fnmatch
 import glob
 import json
-
-# Setting up MongoDB hook to mlab server
-mongodb_hook = MongoHook('mongo_default')
+from utils import *
 
 
 def extract_pubmed_data() -> None:
@@ -107,7 +104,7 @@ def update_mongo() -> None:
 
         collection = 'caseReports'
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
-        mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
+        mongo_insert(collection, docs, filter_docs)
 
 
 default_args = {

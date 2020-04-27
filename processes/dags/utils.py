@@ -8,8 +8,24 @@ import glob
 import json
 import pubmed_parser as pp
 from airflow.contrib.hooks.ftp_hook import FTPHook
+from airflow.contrib.hooks.mongo_hook import MongoHook
 
 ftp_conn_id = "pubmed_ftp"
+# Setting up MongoDB hook to mlab server
+mongodb_hook = MongoHook('mongo_default')
+
+
+def mongo_insert(collection: str, docs: list, filter_docs: list) -> None:
+        """Updates mongoDB and replaces if entry already exists.
+
+        Args:
+            collection: name of mongoDB collection
+            docs: documents to update with
+            filter_docs: key to filter documents
+        """
+        mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
+
+
 
 def ftp_connect(ftp_conn_id: str) -> FTPHook:
     """Connect to FTP.
