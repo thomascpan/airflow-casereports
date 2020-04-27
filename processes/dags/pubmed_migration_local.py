@@ -153,7 +153,7 @@ def get_author(author: list) -> str:
 
 
 def pubmed_get_authors(pubmed_xml: dict) -> list:
-    """Extracts authors from pubmed_paragraph
+    """Extracts authors from pubmed_xml
 
     Args:
         pubmed_xml (dist): dict with pubmed_xml info
@@ -187,6 +187,21 @@ def pubmed_get_subjects(pubmed_xml: dict) -> list:
     logging.info(result)
     return result
 
+def pubmed_get_subjects(pubmed_xml: dict) -> list:
+    """Extracts subjects from pubmed_xml.
+    List of subjects listed in the article.
+    Sometimes, it only contains type of article, such as research article,
+    review proceedings, etc
+
+    Args:
+        pubmed_xml (dist): dict with pubmed_xml info
+
+    Returns:
+        list: pubmed subjects.
+    """
+    return list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
+
+
 def build_case_report_json(xml_path: str) -> json:
     """Makes and returns a JSON object from pubmed XML files
 
@@ -196,10 +211,10 @@ def build_case_report_json(xml_path: str) -> json:
     pubmed_xml = pp.parse_pubmed_xml(xml_path)
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
-    parse_pubmed_table = pp.parse_pubmed_table(xml_path)
 
     case_report = {
         "pmID": pubmed_xml.get("pmid"),
+        "doi": pubmed_xml.get("doi"),
         "title": pubmed_xml.get("full_title"),
         "messages": [],
         "source_files": [],
@@ -310,9 +325,9 @@ def transform_pubmed_data() -> None:
         o_path_basename = os.path.basename(o_path)
         extract_file(local_path, json_dir)
         glob_path = os.path.join(o_path, "*", "*.nxml")
-        filenames = [f for f in glob.glob(glob_path)]
+        fns = [f for f in glob.glob(glob_path)]
         json_path = os.path.join(json_dir, o_path_basename + '.json')
-        join_json_data(filenames, json_path)
+        join_json_data(fns, json_path)
         delete_dir(o_path)
 
 

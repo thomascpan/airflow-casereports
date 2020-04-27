@@ -156,7 +156,7 @@ def get_author(author: list) -> str:
 
 
 def pubmed_get_authors(pubmed_xml: dict) -> list:
-    """Extracts authors from pubmed_paragraph
+    """Extracts authors from pubmed_xml
 
     Args:
         pubmed_xml (dist): dict with pubmed_xml info
@@ -183,6 +183,21 @@ def pubmed_get_subjects(pubmed_xml: dict) -> list:
     s_list = list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
     return s_list[1:]
 
+def pubmed_get_subjects(pubmed_xml: dict) -> list:
+    """Extracts subjects from pubmed_xml.
+    List of subjects listed in the article.
+    Sometimes, it only contains type of article, such as research article,
+    review proceedings, etc
+
+    Args:
+        pubmed_xml (dist): dict with pubmed_xml info
+
+    Returns:
+        list: pubmed subjects.
+    """
+    return list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
+
+
 def build_case_report_json(xml_path: str) -> json:
     """Makes and returns a JSON object from pubmed XML files
     Args:
@@ -192,8 +207,10 @@ def build_case_report_json(xml_path: str) -> json:
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
     parse_pubmed_table = pp.parse_pubmed_table(xml_path)
+
     case_report = {
         "pmID": pubmed_xml.get("pmid"),
+        "doi": pubmed_xml.get("doi"),
         "title": pubmed_xml.get("full_title"),
         "messages": [],
         "source_files": [],
@@ -363,7 +380,8 @@ def update_mongo() -> None:
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
 
         try:
-            mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
+            mongodb_hook.replace_many(
+                collection, docs, filter_docs, upsert=True)
         except BulkWriteError as bwe:
             logging.info(bwe.details)
             logging.info(bwe.details['writeErrors'])

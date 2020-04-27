@@ -26,5 +26,5 @@ sudo yum install git -y
 sudo service docker start
 
 # Start Airflow
-docker-compose up -d
+sudo docker-compose up -d
 ```
