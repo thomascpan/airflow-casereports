@@ -22,6 +22,7 @@ s3_hook = S3Hook('my_conn_S3')
 # Setting up MongoDB hook to mlab server
 mongodb_hook = MongoHook('mongo_default')
 ftp_conn_id = "pubmed_ftp"
+CARDIOVASCULAR = "blood/heart and lymphatics"
 
 
 def ftp_connect(ftp_conn_id: str) -> FTPHook:
@@ -276,8 +277,20 @@ def extract_pubmed_data_failure_callback(context) -> None:
     delete_temp()
 
 
+def subject_filter(subjects: list, terms: list) -> bool:
+    """Check if there are any matching subjects and terms
+    Args:
+        subjects (list): list of subjects
+        terms (list): list of terms
+    """
+    if not subjects or not terms:
+        return False
+    return any(set(subject.lower() for subject in subjects) & set(term.lower() for term in terms))
+
+
 def join_json_data(filenames: str, dest_path: str) -> None:
     """Make a json file consisting of multiple json data
+    TODO: Refactor so that filters can be passed in.
     Args:
         filenames (str): names of input json files
         dest_path (str): directory for combined json output
@@ -285,8 +298,9 @@ def join_json_data(filenames: str, dest_path: str) -> None:
     outfile = open(dest_path, 'w')
     for filename in filenames:
         new_json = build_case_report_json(filename)
-        json.dump(new_json, outfile)
-        outfile.write('\n')
+        if (subject_filter(new_json.get("keywords"), [CARDIOVASCULAR])):
+            json.dump(new_json, outfile)
+            outfile.write('\n')
 
     outfile.close()
 
