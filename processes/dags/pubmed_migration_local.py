@@ -214,13 +214,13 @@ def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on local server
     """
     # to test specific tar files
-    #pattern = 'non_comm_use.A-B.xml.tar.gz'
-    pattern = "*.xml.tar.gz"
+    pattern = 'non_comm_use.A-B.xml.tar.gz'
+    #pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     pubmed_dir = os.path.join(root_dir, 'pubmed')
     original_dir = os.path.join(pubmed_dir, 'original')
-    prefix = 'case_reports/pubmed/original'
+    prefix = 'test/pubmed/original'
 
     delete_dir(original_dir)
     create_dir(pubmed_dir)

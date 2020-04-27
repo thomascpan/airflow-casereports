@@ -215,16 +215,17 @@ def build_case_report_json(xml_path: str) -> json:
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
     """
-    pattern = "*.xml.tar.gz"
+    #pattern = "*.xml.tar.gz"
+    pattern = "comm_use.I-N.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
     bucket_name = 'supreme-acrobat-data'
-    prefix = 'case_reports/pubmed/original'
+    prefix = 'test/pubmed/original'
 
     # deleting old entries in the bucket
-    dest_path = 'case_reports/pubmed/original/'
-    wildcard = 'case_reports/pubmed/original/*.*'
+    dest_path = 'test/pubmed/original/'
+    wildcard = 'test/pubmed/original/*.*'
     old_klist = s3_hook.list_keys(bucket_name, prefix=dest_path, delimiter='/')
     if isinstance(old_klist, list):
         old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
@@ -281,18 +282,18 @@ def transform_pubmed_data() -> None:
     """
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
-    src_path = 'case_reports/pubmed/original/'
-    dest_path = 'case_reports/pubmed/json/'
+    src_path = 'test/pubmed/original/'
+    dest_path = 'test/pubmed/json/'
     src_bucket_name = 'supreme-acrobat-data'
     dest_bucket_name = 'supreme-acrobat-data'
-    wildcard_key = 'case_reports/pubmed/original/*.*'
+    wildcard_key = 'test/pubmed/original/*.*'
     klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
     create_dir(temp_dir)
     filecount = 0
 
     # deleting old entries in the JSON folder
-    wildcard = 'case_reports/pubmed/json/*.*'
+    wildcard = 'test/pubmed/json/*.*'
     old_klist = s3_hook.list_keys(
         dest_bucket_name, prefix=dest_path, delimiter='')
     if isinstance(old_klist, list):
@@ -331,9 +332,9 @@ def transform_pubmed_data_failure_callback(context) -> None:
 def update_mongo() -> None:
     """Updates MongoDB caseReports
     """
-    src_path = 'case_reports/pubmed/json/'
+    src_path = 'test/pubmed/json/'
     src_bucket_name = 'supreme-acrobat-data'
-    wildcard_key = 'case_reports/pubmed/json/*.*'
+    wildcard_key = 'test/pubmed/json/*.*'
 
     klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
