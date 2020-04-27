@@ -22,7 +22,8 @@ s3_hook = S3Hook('my_conn_S3')
 # Setting up MongoDB hook to mlab server
 mongodb_hook = MongoHook('mongo_default')
 ftp_conn_id = "pubmed_ftp"
-CARDIOVASCULAR = "blood/heart and lymphatics"
+selected_subjects = ["blood/heart and lymphatics"]
+selected_article_types = ["Case Report"]
 
 
 def ftp_connect(ftp_conn_id: str) -> FTPHook:
@@ -187,6 +188,18 @@ def pubmed_get_subjects(pubmed_xml: dict) -> list:
     return list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
 
 
+def get_article_type(keywords: list) -> str:
+    """Extracts article_type from keywords if exist
+
+    Args:
+        keywords (list): list of keywords
+
+    Returns:
+        str: pubmed article type.
+    """
+    return keywords[0] if keywords else None
+
+
 def build_case_report_json(xml_path: str) -> json:
     """Makes and returns a JSON object from pubmed XML files
     Args:
@@ -282,15 +295,29 @@ def subject_filter(subjects: list, terms: list) -> bool:
     Args:
         subjects (list): list of subjects
         terms (list): list of terms
+    Returns:
+        bool: whether there are any matches
     """
     if not subjects or not terms:
         return False
     return any(set(subject.lower() for subject in subjects) & set(term.lower() for term in terms))
 
 
+def article_type_filter(article_type: str, types: list) -> bool:
+    """Check if there is a matching publication type
+    Args:
+        article_type (str): article_type
+        terms (list): list of types
+    Returns:
+        bool: whether there are any matches
+    """
+    if not article_type or not types:
+        return False
+    return article_type.lower() in set(t.lower() for t in types)
+
+
 def join_json_data(filenames: str, dest_path: str) -> None:
     """Make a json file consisting of multiple json data
-    TODO: Refactor so that filters can be passed in.
     Args:
         filenames (str): names of input json files
         dest_path (str): directory for combined json output
@@ -298,7 +325,11 @@ def join_json_data(filenames: str, dest_path: str) -> None:
     outfile = open(dest_path, 'w')
     for filename in filenames:
         new_json = build_case_report_json(filename)
-        if (subject_filter(new_json.get("keywords"), [CARDIOVASCULAR])):
+        keywords = new_json.get("keywords")
+        article_type = get_article_type(keywords)
+
+        if (article_type_filter(article_type, selected_article_types) and
+                (subject_filter(keywords, selected_subjects))):
             json.dump(new_json, outfile)
             outfile.write('\n')
 
