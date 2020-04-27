@@ -170,6 +170,18 @@ def pubmed_get_authors(pubmed_xml: dict) -> list:
         result = [get_author(a) for a in author_list]
     return result
 
+def pubmed_get_subjects(pubmed_xml: dict) -> list:
+    """Extracts subjects from pubmed_xml.
+    List of subjects listed in the article.
+    Sometimes, it only contains type of article, such as research article,
+    review proceedings, etc
+    Args:
+        pubmed_xml (dist): dict with pubmed_xml info
+    Returns:
+        list: pubmed subjects.
+    """
+    s_list = list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
+    return s_list[1:]
 
 def build_case_report_json(xml_path: str) -> json:
     """Makes and returns a JSON object from pubmed XML files
@@ -180,7 +192,6 @@ def build_case_report_json(xml_path: str) -> json:
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
     parse_pubmed_table = pp.parse_pubmed_table(xml_path)
-
     case_report = {
         "pmID": pubmed_xml.get("pmid"),
         "title": pubmed_xml.get("full_title"),
@@ -203,7 +214,7 @@ def build_case_report_json(xml_path: str) -> json:
         "action": None,
         "abstract": pubmed_xml.get("abstract"),
         "authors": pubmed_get_authors(pubmed_xml),
-        "keywords": [],
+        "keywords": pubmed_get_subjects(pubmed_xml),
         "introduction": None,
         "discussion": None,
         "references": []
@@ -215,8 +226,8 @@ def build_case_report_json(xml_path: str) -> json:
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
     """
-    #pattern = "*.xml.tar.gz"
-    pattern = "comm_use.I-N.xml.tar.gz"
+    pattern = "*.xml.tar.gz"
+    #pattern = "comm_use.A-B.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')

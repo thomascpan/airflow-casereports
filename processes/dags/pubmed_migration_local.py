@@ -167,6 +167,25 @@ def pubmed_get_authors(pubmed_xml: dict) -> list:
         result = [get_author(a) for a in author_list]
     return result
 
+def pubmed_get_subjects(pubmed_xml: dict) -> list:
+    """Extracts subjects from pubmed_xml.
+    List of subjects listed in the article.
+    Sometimes, it only contains type of article, such as research article,
+    review proceedings, etc
+    Args:
+        pubmed_xml (dist): dict with pubmed_xml info
+    Returns:
+        list: pubmed subjects.
+    """
+    #s_list = list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
+    #logging.info(pubmed_xml.get("subjects"))
+    #return s_list
+    author_list = pubmed_xml.get("subjects")
+    result = None
+    if author_list:
+        result = [a for a in author_list]
+    logging.info(result)
+    return result
 
 def build_case_report_json(xml_path: str) -> json:
     """Makes and returns a JSON object from pubmed XML files
@@ -201,7 +220,7 @@ def build_case_report_json(xml_path: str) -> json:
         "action": None,
         "abstract": pubmed_xml.get("abstract"),
         "authors": pubmed_get_authors(pubmed_xml),
-        "keywords": [],
+        "keywords": pubmed_get_subjects(pubmed_xml),
         "introduction": None,
         "discussion": None,
         "references": []
