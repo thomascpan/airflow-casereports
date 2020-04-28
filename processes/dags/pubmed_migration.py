@@ -16,14 +16,13 @@ import glob
 import json
 import pubmed_parser as pp
 from pymongo.errors import BulkWriteError
+from typing import List
 
 # Setting up boto3 hook to AWS S3
 s3_hook = S3Hook('my_conn_S3')
 # Setting up MongoDB hook to mlab server
 mongodb_hook = MongoHook('mongo_default')
 ftp_conn_id = "pubmed_ftp"
-selected_subjects = ["blood/heart and lymphatics"]
-selected_article_types = ["Case Report"]
 
 
 def ftp_connect(ftp_conn_id: str) -> FTPHook:
@@ -341,18 +340,16 @@ def join_json_data(filenames: str, dest_path: str) -> None:
         dest_path (str): directory for combined json output
     """
     outfile = open(dest_path, 'w')
+
     for filename in filenames:
         new_json = build_case_report_json(filename)
-        keywords = new_json.get("keywords")
-        article_type = new_json.get("article_type")
-
-        if (article_type_filter(article_type, selected_article_types) and
-                (subject_filter(keywords, selected_subjects))):
-            del new_json["article_type"]
-            json.dump(new_json, outfile)
-            outfile.write('\n')
+        json.dump(new_json, outfile)
+        outfile.write('\n')
 
     outfile.close()
+
+    if os.stat(dest_path).st_size == 0:
+        delete_file(dest_path)
 
 
 def transform_pubmed_data() -> None:
