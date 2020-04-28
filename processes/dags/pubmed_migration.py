@@ -22,8 +22,7 @@ ftp_conn_id = "pubmed_ftp"
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
     """
-    #pattern = "*.xml.tar.gz"
-    pattern = "comm_use.A-B.xml.tar.gz"
+    pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
