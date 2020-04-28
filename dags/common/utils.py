@@ -248,6 +248,8 @@ def build_case_report_json(xml_path: str) -> dict:
         "introduction": None,
         "discussion": None,
         "references": [],
+
+        "article_type": article_type, # For filtering.
     }
 
     return case_report
@@ -257,7 +259,7 @@ def subject_filter(subjects: list, terms: list) -> bool:
     """Check if there are any matching subjects and terms
     Args:
         subjects (list): list of subjects
-        terms (list): list of terms
+        terms (list): list of selected terms
     Returns:
         bool: whether there are any matches
     """
@@ -270,7 +272,7 @@ def article_type_filter(article_type: str, types: list) -> bool:
     """Check if there is a matching publication type
     Args:
         article_type (str): article_type
-        terms (list): list of types
+        terms (list): list of selected types
     Returns:
         bool: whether there are any matches
     """
@@ -289,8 +291,11 @@ def join_json_data(filenames: str, dest_path: str) -> None:
 
     for filename in filenames:
         new_json = build_case_report_json(filename)
-        json.dump(new_json, outfile)
-        outfile.write('\n')
+        article_type = new_json.get("article_type")
+
+        if article_type_filter(article_type, ["Case Reports"]):
+            json.dump(new_json, outfile)
+            outfile.write('\n')
 
     outfile.close()
 

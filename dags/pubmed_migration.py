@@ -108,10 +108,11 @@ def transform_pubmed_data() -> None:
         json_path = os.path.join(temp_dir, 'temp' + str(filecount) + '.json')
         join_json_data(filenames, json_path)
 
-        key = os.path.join(dest_path, os.path.basename(
-            o_path_basename + ".json"))
-        s3_hook.load_file(
-            json_path, key, bucket_name=dest_bucket_name, replace=True)
+        if (os.path.exists(json_path)):
+            key = os.path.join(dest_path, os.path.basename(
+                o_path_basename + ".json"))
+            s3_hook.load_file(
+                json_path, key, bucket_name=dest_bucket_name, replace=True)
 
     delete_dir(temp_dir)
 
