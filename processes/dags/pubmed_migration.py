@@ -1,6 +1,4 @@
 from airflow import DAG
-from airflow.operators.bash_operator import BashOperator
-from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.hooks.S3_hook import S3Hook
 from datetime import datetime, timedelta
@@ -10,10 +8,16 @@ import fnmatch
 import json
 import glob
 from pymongo.errors import BulkWriteError
+from typing import List
+from airflow.contrib.hooks.mongo_hook import MongoHook
 from utils import *
 
 # Setting up boto3 hook to AWS S3
 s3_hook = S3Hook('my_conn_S3')
+# Setting up MongoDB hook to mlab server
+mongodb_hook = MongoHook('mongo_default')
+ftp_conn_id = "pubmed_ftp"
+
 
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
@@ -24,11 +28,11 @@ def extract_pubmed_data() -> None:
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
     bucket_name = 'supreme-acrobat-data'
-    prefix = 'test/pubmed/original'
+    prefix = 'case_reports/pubmed/original'
 
     # deleting old entries in the bucket
-    dest_path = 'test/pubmed/original/'
-    wildcard = 'test/pubmed/original/*.*'
+    dest_path = 'case_reports/pubmed/original/'
+    wildcard = 'case_reports/pubmed/original/*.*'
     old_klist = s3_hook.list_keys(bucket_name, prefix=dest_path, delimiter='/')
     if isinstance(old_klist, list):
         old_kmatches = [k for k in old_klist if fnmatch.fnmatch(k, wildcard)]
@@ -70,18 +74,18 @@ def transform_pubmed_data() -> None:
     """
     root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
-    src_path = 'test/pubmed/original/'
-    dest_path = 'test/pubmed/json/'
+    src_path = 'case_reports/pubmed/original/'
+    dest_path = 'case_reports/pubmed/json/'
     src_bucket_name = 'supreme-acrobat-data'
     dest_bucket_name = 'supreme-acrobat-data'
-    wildcard_key = 'test/pubmed/original/*.*'
+    wildcard_key = 'case_reports/pubmed/original/*.*'
     klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
     create_dir(temp_dir)
     filecount = 0
 
     # deleting old entries in the JSON folder
-    wildcard = 'test/pubmed/json/*.*'
+    wildcard = 'case_reports/pubmed/json/*.*'
     old_klist = s3_hook.list_keys(
         dest_bucket_name, prefix=dest_path, delimiter='')
     if isinstance(old_klist, list):
@@ -120,9 +124,9 @@ def transform_pubmed_data_failure_callback(context) -> None:
 def update_mongo() -> None:
     """Updates MongoDB caseReports
     """
-    src_path = 'test/pubmed/json/'
+    src_path = 'case_reports/pubmed/json/'
     src_bucket_name = 'supreme-acrobat-data'
-    wildcard_key = 'test/pubmed/json/*.*'
+    wildcard_key = 'case_reports/pubmed/json/*.*'
 
     klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
@@ -140,7 +144,7 @@ def update_mongo() -> None:
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
 
         try:
-            mongo_insert(collection, docs, filter_docs)
+            mongo_insert(mongodb_hook, collection, docs, filter_docs)
         except BulkWriteError as bwe:
             logging.info(bwe.details)
             logging.info(bwe.details['writeErrors'])

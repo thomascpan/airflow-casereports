@@ -1,6 +1,4 @@
 from airflow import DAG
-from airflow.operators.bash_operator import BashOperator
-from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
 from datetime import datetime, timedelta
 import os
@@ -15,13 +13,12 @@ def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on local server
     """
     # to test specific tar files
-    pattern = 'non_comm_use.A-B.xml.tar.gz'
-    #pattern = "*.xml.tar.gz"
+    pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
     root_dir = '/usr/local/airflow'
     pubmed_dir = os.path.join(root_dir, 'pubmed')
     original_dir = os.path.join(pubmed_dir, 'original')
-    prefix = 'test/pubmed/original'
+    prefix = 'case_reports/pubmed/original'
 
     delete_dir(original_dir)
     create_dir(pubmed_dir)
@@ -104,7 +101,12 @@ def update_mongo() -> None:
 
         collection = 'caseReports'
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
-        mongo_insert(collection, docs, filter_docs)
+        try:
+            mongo_insert(mongodb_hook, collection, docs, filter_docs)
+        except BulkWriteError as bwe:
+            logging.info(bwe.details)
+            logging.info(bwe.details['writeErrors'])
+            raise bwe
 
 
 default_args = {
@@ -123,6 +125,7 @@ dag = DAG(
 extract_pubmed_data_task = PythonOperator(
     task_id='extract_pubmed_data',
     python_callable=extract_pubmed_data,
+    on_failure_callback=extract_pubmed_data_failure_callback,
     dag=dag,
 )
 

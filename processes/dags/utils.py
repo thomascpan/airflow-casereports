@@ -10,21 +10,16 @@ import pubmed_parser as pp
 from airflow.contrib.hooks.ftp_hook import FTPHook
 from airflow.contrib.hooks.mongo_hook import MongoHook
 
-ftp_conn_id = "pubmed_ftp"
-# Setting up MongoDB hook to mlab server
-mongodb_hook = MongoHook('mongo_default')
 
+def mongo_insert(hook: MongoHook, collection: str, docs: list, filter_docs: list) -> None:
+    """Updates mongoDB and replaces if entry already exists.
 
-def mongo_insert(collection: str, docs: list, filter_docs: list) -> None:
-        """Updates mongoDB and replaces if entry already exists.
-
-        Args:
-            collection: name of mongoDB collection
-            docs: documents to update with
-            filter_docs: key to filter documents
-        """
-        mongodb_hook.replace_many(collection, docs, filter_docs, upsert=True)
-
+    Args:
+        collection: name of mongoDB collection
+        docs: documents to update with
+        filter_docs: key to filter documents
+    """
+    hook.replace_many(collection, docs, filter_docs, upsert=True)
 
 
 def ftp_connect(ftp_conn_id: str) -> FTPHook:
@@ -49,6 +44,7 @@ def ftp_disconnect(hook: FTPHook) -> None:
     except:
         None
 
+
 def extract_original_name(filepath: str) -> str:
     """Extracts original name from tar.gz file
     Args:
@@ -67,6 +63,7 @@ def create_dir(dirname: str) -> None:
     """
     if not os.path.exists(dirname):
         os.mkdir(dirname)
+
 
 def delete_dir(dirname: str) -> None:
     """Deletes directory even if exist
@@ -128,6 +125,7 @@ def delete_temp() -> None:
     temp_dir = root_dir + '/' + 'temp'
     delete_dir(temp_dir)
 
+
 def pubmed_get_text(pubmed_paragraph: list) -> str:
     """Extracts text from pubmed_paragraph
 
@@ -154,8 +152,9 @@ def get_author(author: list) -> str:
     last_name = author[0] or ""
     return ("%s %s" % (first_name, last_name)).strip()
 
+
 def pubmed_get_authors(pubmed_xml: dict) -> list:
-    """Extracts authors from pubmed_paragraph
+    """Extracts authors from pubmed_xml
 
     Args:
         pubmed_xml (dist): dict with pubmed_xml info
@@ -175,15 +174,41 @@ def pubmed_get_subjects(pubmed_xml: dict) -> list:
     List of subjects listed in the article.
     Sometimes, it only contains type of article, such as research article,
     review proceedings, etc
+
     Args:
         pubmed_xml (dist): dict with pubmed_xml info
+
     Returns:
         list: pubmed subjects.
     """
-    s_list = list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
-    return s_list[1:]
+    return list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
 
-def build_case_report_json(xml_path: str) -> json:
+
+def get_keywords(subjects: list) -> list:
+    """Extracts keywords from subjects if exist
+
+    Args:
+        subjects (list): list of subjects
+
+    Returns:
+        list: pubmed keywords.
+    """
+    return subjects[1:] if subjects else []
+
+
+def get_article_type(subjects: list) -> str:
+    """Extracts article_type from subjects if exist
+
+    Args:
+        subjects (list): list of subjects
+
+    Returns:
+        str: pubmed article type.
+    """
+    return subjects[0] if subjects else None
+
+
+def build_case_report_json(xml_path: str) -> dict:
     """Makes and returns a JSON object from pubmed XML files
     Args:
         xml_path (str): path to input XML file
@@ -191,9 +216,14 @@ def build_case_report_json(xml_path: str) -> json:
     pubmed_xml = pp.parse_pubmed_xml(xml_path)
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
-    parse_pubmed_table = pp.parse_pubmed_table(xml_path)
+
+    subjects = pubmed_get_subjects(pubmed_xml)
+    keywords = get_keywords(subjects)
+    article_type = get_article_type(subjects)
+
     case_report = {
         "pmID": pubmed_xml.get("pmid"),
+        "doi": pubmed_xml.get("doi"),
         "title": pubmed_xml.get("full_title"),
         "messages": [],
         "source_files": [],
@@ -214,13 +244,39 @@ def build_case_report_json(xml_path: str) -> json:
         "action": None,
         "abstract": pubmed_xml.get("abstract"),
         "authors": pubmed_get_authors(pubmed_xml),
-        "keywords": pubmed_get_subjects(pubmed_xml),
+        "keywords": keywords,
         "introduction": None,
         "discussion": None,
-        "references": []
+        "references": [],
     }
 
     return case_report
+
+
+def subject_filter(subjects: list, terms: list) -> bool:
+    """Check if there are any matching subjects and terms
+    Args:
+        subjects (list): list of subjects
+        terms (list): list of terms
+    Returns:
+        bool: whether there are any matches
+    """
+    if not subjects or not terms:
+        return False
+    return any(set(subject.lower() for subject in subjects) & set(term.lower() for term in terms))
+
+
+def article_type_filter(article_type: str, types: list) -> bool:
+    """Check if there is a matching publication type
+    Args:
+        article_type (str): article_type
+        terms (list): list of types
+    Returns:
+        bool: whether there are any matches
+    """
+    if not article_type or not types:
+        return False
+    return article_type.lower() in set(t.lower() for t in types)
 
 
 def join_json_data(filenames: str, dest_path: str) -> None:
@@ -230,9 +286,13 @@ def join_json_data(filenames: str, dest_path: str) -> None:
         dest_path (str): directory for combined json output
     """
     outfile = open(dest_path, 'w')
+
     for filename in filenames:
         new_json = build_case_report_json(filename)
         json.dump(new_json, outfile)
         outfile.write('\n')
 
     outfile.close()
+
+    if os.stat(dest_path).st_size == 0:
+        delete_file(dest_path)
