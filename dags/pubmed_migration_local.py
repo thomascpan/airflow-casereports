@@ -6,7 +6,7 @@ import logging
 import fnmatch
 import glob
 import json
-from utils import *
+from common.utils import *
 
 
 def extract_pubmed_data() -> None:

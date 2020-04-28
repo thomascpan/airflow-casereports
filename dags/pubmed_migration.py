@@ -10,7 +10,7 @@ import glob
 from pymongo.errors import BulkWriteError
 from typing import List
 from airflow.contrib.hooks.mongo_hook import MongoHook
-from utils import *
+from common.utils import *
 
 # Setting up boto3 hook to AWS S3
 s3_hook = S3Hook('my_conn_S3')
