@@ -249,10 +249,21 @@ def build_case_report_json(xml_path: str) -> dict:
         "discussion": None,
         "references": [],
 
-        "article_type": article_type, # For filtering.
+        "article_type": article_type,  # For filtering.
     }
 
     return case_report
+
+
+def title_filter(title: str, terms: list) -> bool:
+    """Check if title contains any matching terms
+    Args:
+        title (str): title
+        terms (list): list of selected terms
+    Returns:
+        bool: whether there are any matches
+    """
+    return any(term.lower() in title.lower() for term in terms)
 
 
 def subject_filter(subjects: list, terms: list) -> bool:
@@ -281,6 +292,25 @@ def article_type_filter(article_type: str, types: list) -> bool:
     return article_type.lower() in set(t.lower() for t in types)
 
 
+def case_report_filter(case_report: dict) -> bool:
+    """Checks to see if document is a case_report
+    Args:
+        article_type (str): article_type
+        terms (list): list of selected types
+    Returns:
+        bool: returns whether document is a case_report
+    """
+    article_type = case_report.get("article_type")
+    title = case_report.get("title")
+    terms = ["Case Report"]
+
+    atf = article_type_filter(article_type, terms)
+    # tf = title_filter(title, terms)
+
+    # return ((atf) or (not article_type and tf))
+    return atf
+
+
 def join_json_data(filenames: str, dest_path: str) -> None:
     """Make a json file consisting of multiple json data
     Args:
@@ -291,9 +321,9 @@ def join_json_data(filenames: str, dest_path: str) -> None:
 
     for filename in filenames:
         new_json = build_case_report_json(filename)
-        article_type = new_json.get("article_type")
-
-        if article_type_filter(article_type, ["Case Reports"]):
+        
+        if case_report_filter(new_json):
+            del(new_json["article_type"])
             json.dump(new_json, outfile)
             outfile.write('\n')
 
