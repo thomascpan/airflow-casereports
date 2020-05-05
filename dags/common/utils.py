@@ -336,14 +336,9 @@ def cardio_filter(case_report: dict) -> bool:
         bool: returns whether document is cardiology-related
     """
     journal_title = case_report.get("journal")
-    logging.info(journal_title)
     terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio", "JACC"]
-    #pattern = r'\b({})\b'.format('|'.join(map(regex.escape, terms)))
-    #matches = set(map(str.lower, regex.findall(pattern, journal_title.lower(), regex.IGNORECASE)))
-    #temp = [x.upper() for x in terms if x.lower() in matches]
     temp = []
     temp.extend([x.upper() for x in terms if x.lower() in journal_title.lower()])
-    #logging.info(temp)
     if len(temp) > 0:
         return True
     else:
@@ -375,7 +370,7 @@ def join_json_data(filenames: str, dest_path: str) -> None:
     for filename in filenames:
         new_json = build_case_report_json(filename)
 
-        if case_report_filter(new_json) and (cardio_filter(new_json) or title_filter(new_json)):
+        if case_report_filter(new_json) and (cardio_filter(new_json) or title_filter(new_json) or text_filter(new_json)):
             del(new_json["article_type"])
             del(new_json["journal"])
             json.dump(new_json, outfile)
