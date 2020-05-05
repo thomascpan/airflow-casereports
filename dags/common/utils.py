@@ -7,6 +7,7 @@ import fnmatch
 import glob
 import json
 import pubmed_parser as pp
+import re as regex
 from airflow.contrib.hooks.ftp_hook import FTPHook
 from airflow.contrib.hooks.mongo_hook import MongoHook
 
@@ -216,7 +217,6 @@ def build_case_report_json(xml_path: str) -> dict:
     pubmed_xml = pp.parse_pubmed_xml(xml_path)
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
-
     subjects = pubmed_get_subjects(pubmed_xml)
     keywords = get_keywords(subjects)
     article_type = get_article_type(subjects)
@@ -248,7 +248,7 @@ def build_case_report_json(xml_path: str) -> dict:
         "introduction": None,
         "discussion": None,
         "references": [],
-
+        "journal": pubmed_xml.get("journal"),
         "article_type": article_type,  # For filtering.
     }
 
@@ -291,6 +291,63 @@ def article_type_filter(article_type: str, types: list) -> bool:
         return False
     return article_type.lower() in set(t.lower() for t in types)
 
+def title_filter(case_report: dict) -> bool:
+    """Checks to see if title shows a cardiology case_report
+    Args:
+        case_report (dicr): json file
+        terms (list): list of cardiology terms
+    Returns:
+        bool: returns whether title is cardiology-related
+    """
+    title = case_report.get("title")
+    terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio"]
+    temp = []
+    if isinstance(title, str):
+        temp.extend([x.upper() for x in terms if x.lower() in title.lower()])
+    if len(temp) > 0:
+        return True
+    else:
+        return False
+
+def text_filter(case_report: dict) -> bool:
+    """Checks to see if text is a cardiology case_report
+    Args:
+        case_report (dicr): json file
+        terms (list): list of cardiology terms
+    Returns:
+        bool: returns whether text is cardiology-related
+    """
+    text = case_report.get("text")
+    terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio"]
+    temp = []
+    if isinstance(text, str):
+        temp.extend([x.upper() for x in terms if x.lower() in text.lower()])
+    if len(temp) > 0:
+        return True
+    else:
+        return False
+
+def cardio_filter(case_report: dict) -> bool:
+    """Checks to see if document is a cardiology case_report
+    Args:
+        case_report (dict): pubmed json file
+        terms (list): list of cardiology terms
+    Returns:
+        bool: returns whether document is cardiology-related
+    """
+    journal_title = case_report.get("journal")
+    logging.info(journal_title)
+    terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio", "JACC"]
+    #pattern = r'\b({})\b'.format('|'.join(map(regex.escape, terms)))
+    #matches = set(map(str.lower, regex.findall(pattern, journal_title.lower(), regex.IGNORECASE)))
+    #temp = [x.upper() for x in terms if x.lower() in matches]
+    temp = []
+    temp.extend([x.upper() for x in terms if x.lower() in journal_title.lower()])
+    #logging.info(temp)
+    if len(temp) > 0:
+        return True
+    else:
+        return False
 
 def case_report_filter(case_report: dict) -> bool:
     """Checks to see if document is a case_report
@@ -305,11 +362,7 @@ def case_report_filter(case_report: dict) -> bool:
     terms = ["Case Report"]
 
     atf = article_type_filter(article_type, terms)
-    # tf = title_filter(title, terms)
-
-    # return ((atf) or (not article_type and tf))
     return atf
-
 
 def join_json_data(filenames: str, dest_path: str) -> None:
     """Make a json file consisting of multiple json data
@@ -321,9 +374,10 @@ def join_json_data(filenames: str, dest_path: str) -> None:
 
     for filename in filenames:
         new_json = build_case_report_json(filename)
-        
-        if case_report_filter(new_json):
+
+        if case_report_filter(new_json) and (cardio_filter(new_json) or title_filter(new_json)):
             del(new_json["article_type"])
+            del(new_json["journal"])
             json.dump(new_json, outfile)
             outfile.write('\n')
 
