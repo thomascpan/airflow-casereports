@@ -7,7 +7,6 @@ import fnmatch
 import glob
 import json
 import pubmed_parser as pp
-import re as regex
 from airflow.contrib.hooks.ftp_hook import FTPHook
 from airflow.contrib.hooks.mongo_hook import MongoHook
 
@@ -294,7 +293,7 @@ def article_type_filter(article_type: str, types: list) -> bool:
 def title_filter(case_report: dict) -> bool:
     """Checks to see if title shows a cardiology case_report
     Args:
-        case_report (dicr): json file
+        case_report (dict): json file
         terms (list): list of cardiology terms
     Returns:
         bool: returns whether title is cardiology-related
@@ -310,9 +309,9 @@ def title_filter(case_report: dict) -> bool:
         return False
 
 def text_filter(case_report: dict) -> bool:
-    """Checks to see if text is a cardiology case_report
+    """Checks to see if text is a cardiology case report
     Args:
-        case_report (dicr): json file
+        case_report (dict): json file
         terms (list): list of cardiology terms
     Returns:
         bool: returns whether text is cardiology-related
