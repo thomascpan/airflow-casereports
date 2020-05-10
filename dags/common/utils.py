@@ -254,15 +254,17 @@ def build_case_report_json(xml_path: str) -> dict:
     return case_report
 
 
-def title_filter(title: str, terms: list) -> bool:
-    """Check if title contains any matching terms
+def text_filter(text: str, terms: list) -> bool:
+    """Check if text contains any of the terms
     Args:
-        title (str): title
+        text (str): searched text
         terms (list): list of selected terms
     Returns:
         bool: whether there are any matches
     """
-    return any(term.lower() in title.lower() for term in terms)
+    if isinstance(text, str):
+        return any(term.lower() in text.lower() for term in terms)
+    return False
 
 
 def subject_filter(subjects: list, terms: list) -> bool:
@@ -290,59 +292,6 @@ def article_type_filter(article_type: str, types: list) -> bool:
         return False
     return article_type.lower() in set(t.lower() for t in types)
 
-def title_filter(case_report: dict) -> bool:
-    """Checks to see if title shows a cardiology case_report
-    Args:
-        case_report (dict): json file
-        terms (list): list of cardiology terms
-    Returns:
-        bool: returns whether title is cardiology-related
-    """
-    title = case_report.get("title")
-    terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio"]
-    temp = []
-    if isinstance(title, str):
-        temp.extend([x.upper() for x in terms if x.lower() in title.lower()])
-    if len(temp) > 0:
-        return True
-    else:
-        return False
-
-def text_filter(case_report: dict) -> bool:
-    """Checks to see if text is a cardiology case report
-    Args:
-        case_report (dict): json file
-        terms (list): list of cardiology terms
-    Returns:
-        bool: returns whether text is cardiology-related
-    """
-    text = case_report.get("text")
-    terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio"]
-    temp = []
-    if isinstance(text, str):
-        temp.extend([x.upper() for x in terms if x.lower() in text.lower()])
-    if len(temp) > 0:
-        return True
-    else:
-        return False
-
-def cardio_filter(case_report: dict) -> bool:
-    """Checks to see if document is a cardiology case_report
-    Args:
-        case_report (dict): pubmed json file
-        terms (list): list of cardiology terms
-    Returns:
-        bool: returns whether document is cardiology-related
-    """
-    journal_title = case_report.get("journal")
-    terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio", "JACC"]
-    temp = []
-    temp.extend([x.upper() for x in terms if x.lower() in journal_title.lower()])
-    if len(temp) > 0:
-        return True
-    else:
-        return False
-
 def case_report_filter(case_report: dict) -> bool:
     """Checks to see if document is a case_report
     Args:
@@ -369,7 +318,12 @@ def join_json_data(filenames: str, dest_path: str) -> None:
     for filename in filenames:
         new_json = build_case_report_json(filename)
 
-        if case_report_filter(new_json) and (cardio_filter(new_json) or title_filter(new_json) or text_filter(new_json)):
+        title_terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio", "JACC"]
+        text_terms = ["arrhythmia", "heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio", "angina", "aorta", "arteriography", "arteriosclerosis", "tachycardia", "ischemia", "ventricle", "tricuspid", "valve"]
+        title = new_json.get('title')
+        text = new_json.get('text')
+        journal = new_json.get('journal')
+        if case_report_filter(new_json) and (text_filter(journal, title_terms) or text_filter(title, text_terms)):
             del(new_json["article_type"])
             del(new_json["journal"])
             json.dump(new_json, outfile)
