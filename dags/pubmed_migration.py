@@ -17,7 +17,7 @@ s3_hook = S3Hook('my_conn_S3')
 # Setting up MongoDB hook to mlab server
 mongodb_hook = MongoHook('mongo_default')
 ftp_conn_id = "pubmed_ftp"
-s3bucket = 'case_reports'
+s3bucket = 'test'
 mongo_folder = 'casereports_cardio'
 
 def extract_pubmed_data() -> None:
