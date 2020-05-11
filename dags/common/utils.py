@@ -216,7 +216,6 @@ def build_case_report_json(xml_path: str) -> dict:
     pubmed_xml = pp.parse_pubmed_xml(xml_path)
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
-
     subjects = pubmed_get_subjects(pubmed_xml)
     keywords = get_keywords(subjects)
     article_type = get_article_type(subjects)
@@ -248,22 +247,24 @@ def build_case_report_json(xml_path: str) -> dict:
         "introduction": None,
         "discussion": None,
         "references": [],
-
+        "journal": pubmed_xml.get("journal"),
         "article_type": article_type,  # For filtering.
     }
 
     return case_report
 
 
-def title_filter(title: str, terms: list) -> bool:
-    """Check if title contains any matching terms
+def text_filter(text: str, terms: list) -> bool:
+    """Check if text contains any of the terms
     Args:
-        title (str): title
+        text (str): searched text
         terms (list): list of selected terms
     Returns:
         bool: whether there are any matches
     """
-    return any(term.lower() in title.lower() for term in terms)
+    if isinstance(text, str):
+        return any(term.lower() in text.lower() for term in terms)
+    return False
 
 
 def subject_filter(subjects: list, terms: list) -> bool:
@@ -291,7 +292,6 @@ def article_type_filter(article_type: str, types: list) -> bool:
         return False
     return article_type.lower() in set(t.lower() for t in types)
 
-
 def case_report_filter(case_report: dict) -> bool:
     """Checks to see if document is a case_report
     Args:
@@ -305,11 +305,7 @@ def case_report_filter(case_report: dict) -> bool:
     terms = ["Case Report"]
 
     atf = article_type_filter(article_type, terms)
-    # tf = title_filter(title, terms)
-
-    # return ((atf) or (not article_type and tf))
     return atf
-
 
 def join_json_data(filenames: str, dest_path: str) -> None:
     """Make a json file consisting of multiple json data
@@ -321,9 +317,15 @@ def join_json_data(filenames: str, dest_path: str) -> None:
 
     for filename in filenames:
         new_json = build_case_report_json(filename)
-        
-        if case_report_filter(new_json):
+
+        title_terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio", "JACC"]
+        text_terms = ["arrhythmia", "heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio", "angina", "aorta", "arteriography", "arteriosclerosis", "tachycardia", "ischemia", "ventricle", "tricuspid", "valve"]
+        title = new_json.get('title')
+        text = new_json.get('text')
+        journal = new_json.get('journal')
+        if case_report_filter(new_json) and (text_filter(journal, title_terms) or text_filter(title, text_terms)):
             del(new_json["article_type"])
+            del(new_json["journal"])
             json.dump(new_json, outfile)
             outfile.write('\n')
 
