@@ -1,2 +1,3 @@
 git+git://github.com/titipata/pubmed_parser.git
 pymongo
+elasticsearch

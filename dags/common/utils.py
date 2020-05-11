@@ -9,9 +9,10 @@ import json
 import pubmed_parser as pp
 from airflow.contrib.hooks.ftp_hook import FTPHook
 from airflow.contrib.hooks.mongo_hook import MongoHook
+from pymongo.results import BulkWriteResult
 
 
-def mongo_insert(hook: MongoHook, collection: str, docs: list, filter_docs: list) -> None:
+def mongo_insert(hook: MongoHook, collection: str, docs: list, filter_docs: list) -> BulkWriteResult:
     """Updates mongoDB and replaces if entry already exists.
 
     Args:
@@ -19,7 +20,7 @@ def mongo_insert(hook: MongoHook, collection: str, docs: list, filter_docs: list
         docs: documents to update with
         filter_docs: key to filter documents
     """
-    hook.replace_many(collection, docs, filter_docs, upsert=True)
+    return hook.replace_many(collection, docs, filter_docs, upsert=True)
 
 
 def ftp_connect(ftp_conn_id: str) -> FTPHook:

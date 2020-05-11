@@ -11,6 +11,7 @@ from pymongo.errors import BulkWriteError
 from typing import List
 from airflow.contrib.hooks.mongo_hook import MongoHook
 from common.utils import *
+from elasticsearch import Elasticsearch
 
 # Setting up boto3 hook to AWS S3
 s3_hook = S3Hook('my_conn_S3')
@@ -144,11 +145,33 @@ def update_mongo() -> None:
         filter_docs = [{'pmID': doc['pmID']} for doc in docs]
 
         try:
-            mongo_insert(mongodb_hook, collection, docs, filter_docs)
+            result = mongo_insert(
+                mongodb_hook, collection, docs, filter_docs)
         except BulkWriteError as bwe:
             logging.info(bwe.details)
             logging.info(bwe.details['writeErrors'])
+
             raise bwe
+
+        logging.info(result.upserted_ids)
+        _ids = list(str(v) for v in result.upserted_ids.values())
+        # add casereport _id to docs
+        for i, doc in enumerate(docs):
+            doc["id"] = _ids[i]
+        # xcom push by return 
+        return docs
+
+
+def update_elasticsearch() -> None:
+    es = Elasticsearch(
+        ['https://search-acrobat-smsvp2rqdw7jhssq3selgvrqyi.us-west-2.es.amazonaws.com'])
+
+    data = ti.xcom_pull(key=None, task_ids='update_mongo')
+    count = int(es.cat.count(index='casereport').strip().split(' ')[2])
+
+    body = generate_elasticsearch_body(count, data)
+
+    es.bulk(body=body)
 
 
 default_args = {
@@ -181,6 +204,12 @@ transform_pubmed_data_task = PythonOperator(
 update_mongodb_task = PythonOperator(
     task_id='update_mongodb',
     python_callable=update_mongo,
+    dag=dag,
+)
+
+update_elasticsearch_task = PythonOperator(
+    task_id='update_elasticsearch',
+    python_callable=update_elasticsearch,
     dag=dag,
 )
 
