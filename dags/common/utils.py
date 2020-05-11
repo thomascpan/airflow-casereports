@@ -12,14 +12,18 @@ from airflow.contrib.hooks.mongo_hook import MongoHook
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import streaming_bulk
 
-def upload_ES(count: int):
+def upload_ES(data: dict):
     es = Elasticsearch('https://search-acrobat-smsvp2rqdw7jhssq3selgvrqyi.us-west-2.es.amazonaws.com')
+    es.indices.refresh("casereport")
+    last_doc = es.cat.count("casereport", params={"format": "json"})
+    count = last_doc[0]["count"]
     logging.info(count)
-    #try:
-    #    pass
-        #es.index(index="test", doc_type="string", body={"topic" : msg.topic, "dataString" : msg.payload, "timestamp": datetime.utcnow()})
-    #catch elasticsearch.exceptions.ConnectionError:
-    #    pass
+    try:
+        pass
+        #es.index(index="casereport", type="_doc", id=count+1, score=1, body={"id" : data.get("id"), "pmID": data.get("pmID"), "content": data.get("text")})
+    except:
+        logging.info("Cannot add document to Elasticsearch.")
+    #es.get(index='casereport', id=212)
 
 def mongo_insert(hook: MongoHook, collection: str, docs: list, filter_docs: list) -> None:
     """Updates mongoDB and replaces if entry already exists.
@@ -325,8 +329,6 @@ def join_json_data(filenames: str, dest_path: str) -> None:
     """
     outfile = open(dest_path, 'w')
 
-    count = 0
-
     for filename in filenames:
         new_json = build_case_report_json(filename)
 
@@ -338,12 +340,11 @@ def join_json_data(filenames: str, dest_path: str) -> None:
         if case_report_filter(new_json) and (text_filter(journal, title_terms) or text_filter(title, text_terms)):
             del(new_json["article_type"])
             del(new_json["journal"])
-            count = count + 1
+            upload_ES(new_json)
             json.dump(new_json, outfile)
             outfile.write('\n')
 
     outfile.close()
-    upload_ES(count)
 
     if os.stat(dest_path).st_size == 0:
         delete_file(dest_path)
