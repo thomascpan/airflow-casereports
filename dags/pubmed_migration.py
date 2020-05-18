@@ -11,14 +11,17 @@ from pymongo.errors import BulkWriteError
 from typing import List
 from airflow.contrib.hooks.mongo_hook import MongoHook
 from common.utils import *
+from elasticsearch import Elasticsearch
+from elasticsearch.helpers import bulk
 
 # Setting up boto3 hook to AWS S3
 s3_hook = S3Hook('my_conn_S3')
 # Setting up MongoDB hook to mlab server
 mongodb_hook = MongoHook('mongo_default')
 ftp_conn_id = "pubmed_ftp"
-s3bucket = 'case_reports'
+s3bucket = 'test'
 mongo_folder = 'casereports_cardio'
+
 
 def extract_pubmed_data() -> None:
     """Extracts case-reports from pubmed data and stores result on S3
@@ -122,7 +125,7 @@ def transform_pubmed_data_failure_callback(context) -> None:
     delete_temp()
 
 
-def update_mongo() -> None:
+def update_mongo() -> list:
     """Updates MongoDB caseReports
     """
     src_path = s3bucket + '/pubmed/json/'
@@ -132,23 +135,41 @@ def update_mongo() -> None:
     klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
 
+    docs = []
+
     for key in key_matches:
-        docs = []
         obj = s3_hook.get_key(key, src_bucket_name)
         file_content = obj.get()['Body'].read().decode('utf-8')
 
         for line in file_content.splitlines():
             json_content = json.loads(line)
-            docs.append(json_content)
 
-        filter_docs = [{'pmID': doc['pmID']} for doc in docs]
+            if validate_case_report(json_content):
+                docs.append(json_content)
 
-        try:
-            mongo_insert(mongodb_hook, mongo_folder, docs, filter_docs)
-        except BulkWriteError as bwe:
-            logging.info(bwe.details)
-            logging.info(bwe.details['writeErrors'])
-            raise bwe
+    filter_docs = [{'pmID': doc['pmID']} for doc in docs]
+
+    try:
+        mongodb_hook.replace_many(mongo_folder, docs, filter_docs, upsert=True)
+    except BulkWriteError as bwe:
+        logging.info(bwe.details)
+        logging.info(bwe.details['writeErrors'])
+        raise bwe
+
+    # xcom push by return
+    return docs
+
+
+def update_elasticsearch(**context) -> None:
+    es = Elasticsearch(
+        ['https://search-acrobat-smsvp2rqdw7jhssq3selgvrqyi.us-west-2.es.amazonaws.com'])
+
+    docs = context["task_instance"].xcom_pull(
+        key=None, task_ids='update_mongo')
+
+    body = generate_elasticsearch_body(es, docs)
+
+    bulk(es, body)
 
 
 default_args = {
@@ -178,10 +199,17 @@ transform_pubmed_data_task = PythonOperator(
     dag=dag,
 )
 
-update_mongodb_task = PythonOperator(
-    task_id='update_mongodb',
+update_mongo_task = PythonOperator(
+    task_id='update_mongo',
     python_callable=update_mongo,
     dag=dag,
 )
 
-extract_pubmed_data_task >> transform_pubmed_data_task >> update_mongodb_task
+update_elasticsearch_task = PythonOperator(
+    task_id='update_elasticsearch',
+    provide_context=True,
+    python_callable=update_elasticsearch,
+    dag=dag,
+)
+
+extract_pubmed_data_task >> transform_pubmed_data_task >> update_mongo_task >> update_elasticsearch_task
