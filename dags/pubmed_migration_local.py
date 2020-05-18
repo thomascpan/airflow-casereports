@@ -6,7 +6,14 @@ import logging
 import fnmatch
 import glob
 import json
+from airflow.contrib.hooks.mongo_hook import MongoHook
 from common.utils import *
+
+
+mongodb_hook = MongoHook('mongo_default')
+ftp_conn_id = "pubmed_ftp"
+s3bucket = 'case_reports'
+mongo_folder = 'casereports_cardio'
 
 
 def extract_pubmed_data() -> None:
@@ -83,7 +90,7 @@ def transform_pubmed_data_failure_callback(context) -> None:
     pass
 
 
-def update_mongo() -> None:
+def update_mongo() -> list:
     """Updates MongoDB caseReports
     """
     root_dir = '/usr/local/airflow'
@@ -93,20 +100,24 @@ def update_mongo() -> None:
     file_path = os.path.join(json_dir, "*.json")
     filenames = [f for f in glob.glob(file_path)]
 
+    docs = []
     for filename in filenames:
-        docs = []
         with open(filename) as f:
             for line in f:
-                docs.append(json.loads(line))
+                if validate_case_report(json_content):
+                    docs.append(json.loads(line))
 
-        collection = 'caseReports'
-        filter_docs = [{'pmID': doc['pmID']} for doc in docs]
-        try:
-            mongo_insert(mongodb_hook, collection, docs, filter_docs)
-        except BulkWriteError as bwe:
-            logging.info(bwe.details)
-            logging.info(bwe.details['writeErrors'])
-            raise bwe
+    filter_docs = [{'pmID': doc['pmID']} for doc in docs]
+
+    try:
+        mongodb_hook.replace_many(mongo_folder, docs, filter_docs, upsert=True)
+    except BulkWriteError as bwe:
+        logging.info(bwe.details)
+        logging.info(bwe.details['writeErrors'])
+        raise bwe
+
+    # xcom push by return
+    return docs
 
 
 default_args = {

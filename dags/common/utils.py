@@ -8,32 +8,7 @@ import glob
 import json
 import pubmed_parser as pp
 from airflow.contrib.hooks.ftp_hook import FTPHook
-from airflow.contrib.hooks.mongo_hook import MongoHook
 from elasticsearch import Elasticsearch
-from elasticsearch.helpers import streaming_bulk
-
-def upload_ES(data: dict):
-    es = Elasticsearch('https://search-acrobat-smsvp2rqdw7jhssq3selgvrqyi.us-west-2.es.amazonaws.com')
-    es.indices.refresh("casereport")
-    last_doc = es.cat.count("casereport", params={"format": "json"})
-    count = last_doc[0]["count"]
-    logging.info(count)
-    try:
-        pass
-        #es.index(index="casereport", type="_doc", id=count+1, score=1, body={"id" : data.get("id"), "pmID": data.get("pmID"), "content": data.get("text")})
-    except:
-        logging.info("Cannot add document to Elasticsearch.")
-    #es.get(index='casereport', id=212)
-
-def mongo_insert(hook: MongoHook, collection: str, docs: list, filter_docs: list) -> None:
-    """Updates mongoDB and replaces if entry already exists.
-
-    Args:
-        collection: name of mongoDB collection
-        docs: documents to update with
-        filter_docs: key to filter documents
-    """
-    hook.replace_many(collection, docs, filter_docs, upsert=True)
 
 
 def ftp_connect(ftp_conn_id: str) -> FTPHook:
@@ -268,6 +243,17 @@ def build_case_report_json(xml_path: str) -> dict:
     return case_report
 
 
+def validate_case_report(case_report: dict) -> bool:
+    """Check if case report is valid
+
+    Args:
+        case_report (dict): case report dict object
+    Returns:
+        bool: whether case report is valid
+    """
+    return case_report.get("pmID")
+
+
 def text_filter(text: str, terms: list) -> bool:
     """Check if text contains any of the terms
     Args:
@@ -306,6 +292,7 @@ def article_type_filter(article_type: str, types: list) -> bool:
         return False
     return article_type.lower() in set(t.lower() for t in types)
 
+
 def case_report_filter(case_report: dict) -> bool:
     """Checks to see if document is a case_report
     Args:
@@ -321,8 +308,36 @@ def case_report_filter(case_report: dict) -> bool:
     atf = article_type_filter(article_type, terms)
     return atf
 
+
+def generate_elasticsearch_body(es: Elasticsearch, docs: list) -> list:
+    """Create elasticserach body for bulk()
+    Args:
+        es (Elasticsearch): Elasticsearch instance
+        docs (list): list of case_report docs
+    Returns:
+        list: list of bulk update items
+    """
+
+    body = []
+    for doc in docs:
+        if validate_case_report(doc):
+            body.append(
+                {
+                    "_index": "casereport",
+                    "_type": "_doc",
+                    "_id": doc.get('pmID'),
+                    "_source": {
+                        "pmID": doc.get('pmID'),
+                        "content": doc.get('text')
+                    }
+                }
+            )
+    return body
+
+
 def join_json_data(filenames: str, dest_path: str) -> None:
     """Make a json file consisting of multiple json data
+
     Args:
         filenames (str): names of input json files
         dest_path (str): directory for combined json output
@@ -332,17 +347,19 @@ def join_json_data(filenames: str, dest_path: str) -> None:
     for filename in filenames:
         new_json = build_case_report_json(filename)
 
-        title_terms = ["heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio", "JACC"]
-        text_terms = ["arrhythmia", "heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio", "angina", "aorta", "arteriography", "arteriosclerosis", "tachycardia", "ischemia", "ventricle", "tricuspid", "valve"]
-        title = new_json.get('title')
-        text = new_json.get('text')
-        journal = new_json.get('journal')
-        if case_report_filter(new_json) and (text_filter(journal, title_terms) or text_filter(title, text_terms)):
-            del(new_json["article_type"])
-            del(new_json["journal"])
-            upload_ES(new_json)
-            json.dump(new_json, outfile)
-            outfile.write('\n')
+        if validate_case_report(new_json):
+            title_terms = ["heart", "cardiology", "heartrhythm",
+                           "cardiovascular", "heart rhythm", "cardio", "JACC"]
+            text_terms = ["arrhythmia", "heart", "cardiology", "heartrhythm", "cardiovascular", "heart rhythm", "cardio",
+                          "angina", "aorta", "arteriography", "arteriosclerosis", "tachycardia", "ischemia", "ventricle", "tricuspid", "valve"]
+            title = new_json.get('title')
+            text = new_json.get('text')
+            journal = new_json.get('journal')
+            if case_report_filter(new_json) and (text_filter(journal, title_terms) or text_filter(title, text_terms)):
+                del(new_json["article_type"])
+                del(new_json["journal"])
+                json.dump(new_json, outfile)
+                outfile.write('\n')
 
     outfile.close()
 
