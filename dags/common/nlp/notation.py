@@ -60,9 +60,4 @@ def sentenceLabel(sentence):
 
     all_entities.append(tags_predictions[1:-1])
     all_tokens.append(tokens[1:-1])
-
-
-    #print(all_tokens)
-    #print(all_entities)
-
     return all_tokens,all_entities
