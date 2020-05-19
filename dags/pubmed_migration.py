@@ -19,8 +19,8 @@ s3_hook = S3Hook('my_conn_S3')
 # Setting up MongoDB hook to mlab server
 mongodb_hook = MongoHook('mongo_default')
 ftp_conn_id = "pubmed_ftp"
-s3bucket = 'test'
-mongo_folder = 'casereports_cardio'
+s3bucket = 'case_reports'
+mongo_folder = 'casereports'
 
 
 def extract_pubmed_data() -> None:
@@ -125,8 +125,8 @@ def transform_pubmed_data_failure_callback(context) -> None:
     delete_temp()
 
 
-def update_mongo() -> list:
-    """Updates MongoDB caseReports
+def update_mongo_and_elasticsearch() -> list:
+    """Updates MongoDB caseReports and ElasticSearch
     """
     src_path = s3bucket + '/pubmed/json/'
     src_bucket_name = 'supreme-acrobat-data'
@@ -134,6 +134,9 @@ def update_mongo() -> list:
 
     klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
+
+    es = Elasticsearch(
+        ['https://search-acrobat-smsvp2rqdw7jhssq3selgvrqyi.us-west-2.es.amazonaws.com'])
 
     docs = []
 
@@ -156,19 +159,7 @@ def update_mongo() -> list:
         logging.info(bwe.details['writeErrors'])
         raise bwe
 
-    # xcom push by return
-    return docs
-
-
-def update_elasticsearch(**context) -> None:
-    es = Elasticsearch(
-        ['https://search-acrobat-smsvp2rqdw7jhssq3selgvrqyi.us-west-2.es.amazonaws.com'])
-
-    docs = context["task_instance"].xcom_pull(
-        key=None, task_ids='update_mongo')
-
     body = generate_elasticsearch_body(es, docs)
-
     bulk(es, body)
 
 
@@ -199,17 +190,10 @@ transform_pubmed_data_task = PythonOperator(
     dag=dag,
 )
 
-update_mongo_task = PythonOperator(
-    task_id='update_mongo',
-    python_callable=update_mongo,
+update_mongo_and_elasticsearch_task = PythonOperator(
+    task_id='update_mongo_and_elasticsearch',
+    python_callable=update_mongo_and_elasticsearch,
     dag=dag,
 )
 
-update_elasticsearch_task = PythonOperator(
-    task_id='update_elasticsearch',
-    provide_context=True,
-    python_callable=update_elasticsearch,
-    dag=dag,
-)
-
-extract_pubmed_data_task >> transform_pubmed_data_task >> update_mongo_task >> update_elasticsearch_task
+extract_pubmed_data_task >> transform_pubmed_data_task >> update_mongo_and_elasticsearch_task

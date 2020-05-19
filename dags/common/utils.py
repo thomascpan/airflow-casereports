@@ -320,18 +320,17 @@ def generate_elasticsearch_body(es: Elasticsearch, docs: list) -> list:
 
     body = []
     for doc in docs:
-        if validate_case_report(doc):
-            body.append(
-                {
-                    "_index": "casereport",
-                    "_type": "_doc",
-                    "_id": doc.get('pmID'),
-                    "_source": {
-                        "pmID": doc.get('pmID'),
-                        "content": doc.get('text')
-                    }
+        body.append(
+            {
+                "_index": "casereport",
+                "_type": "_doc",
+                "_id": doc.get('pmID'),
+                "_source": {
+                    "pmID": doc.get('pmID'),
+                    "content": doc.get('text')
                 }
-            )
+            }
+        )
     return body
 
 
