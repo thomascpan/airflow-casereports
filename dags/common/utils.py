@@ -254,18 +254,22 @@ def validate_case_report(case_report: dict) -> bool:
     return case_report.get("pmID")
 
 
-def text_filter(text: str, terms: list) -> bool:
+def text_filter(text: str, terms: list, min_terms: int) -> bool:
     """Check if text contains any of the terms
     Args:
         text (str): searched text
         terms (list): list of selected terms
+        min_terms: the number of hits needed to return true
     Returns:
         bool: whether there are any matches
     """
+    temp = []
     if isinstance(text, str):
-        return any(term.lower() in text.lower() for term in terms)
-    return False
-
+        temp.extend([x.upper() for x in terms if x.lower() in text.lower()])
+    if len(temp) > min_terms:
+        return True
+    else:
+        return False
 
 def subject_filter(subjects: list, terms: list) -> bool:
     """Check if there are any matching subjects and terms
@@ -354,7 +358,7 @@ def join_json_data(filenames: str, dest_path: str) -> None:
             title = new_json.get('title')
             text = new_json.get('text')
             journal = new_json.get('journal')
-            if case_report_filter(new_json) and (text_filter(journal, title_terms) or text_filter(title, text_terms)):
+            if case_report_filter(new_json) and (text_filter(journal, title_terms, 0) or text_filter(title, text_terms, 0) or text_filter(text, text_terms, 3)):
                 del(new_json["article_type"])
                 del(new_json["journal"])
                 json.dump(new_json, outfile)

@@ -3,3 +3,5 @@ pymongo
 elasticsearch
 torch==1.0.0
 transformers==2.4.1
+nltk
+tqdm
