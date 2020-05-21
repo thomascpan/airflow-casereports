@@ -14,10 +14,12 @@ all_documents = response['hits']['hits']
 
 
 # save snapshot
-with open('es.json', 'w') as fp:
+with open('data/es.json', 'w') as fp:
     json.dump(all_documents, fp)
 
 
+# delete index 
+es.indices.delete(index='casereport', ignore=[400, 404])
 
 # create
 bulk_creates = []
@@ -34,6 +36,10 @@ for result in all_documents:
         }
     )
 bulk(es, bulk_creates)
+
+# Load json file
+with open('data/es.json') as f:
+    all_documents = json.load(f)
 
 
 # delete
