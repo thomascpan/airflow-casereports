@@ -7,6 +7,7 @@ import fnmatch
 import glob
 import json
 import pubmed_parser as pp
+import regex as re
 from airflow.contrib.hooks.ftp_hook import FTPHook
 from elasticsearch import Elasticsearch
 
@@ -137,10 +138,53 @@ def get_author(author: list) -> str:
     Returns:
         str: The original name
     """
-    first_name = author[1] or ""
-    last_name = author[0] or ""
-    return ("%s %s" % (first_name, last_name)).strip()
+    if len(author) > 0:
+        first_name = author[1] or ""
+        last_name = author[0] or ""
+        return ("%s %s" % (first_name, last_name)).strip()
+    else:
+        return "N/A"
 
+def make_dict(affil_list: list) -> dict:
+    """Creates a dictionary for affiliation lookup.
+
+    Args:
+        affil_list(list): list of affilations corresponding to affiliation number
+
+    Returns:
+        dict: dictionary to look up affiliations given an ID
+    """
+    affil_dict = {}
+    for affil in affil_list:
+        affil_dict[affil[0]] = affil[1]
+    return affil_dict
+
+def make_author_dict(author: list, affil_dict: dict) -> dict:
+    """Creates a list of dictionaries for the authors key
+
+    Args:
+        author(list): list of name, id, and affilations corresponding to affiliation number
+        affil_dict(dicr): dictionary of affiliation IDs and text
+
+    Returns:
+        dict: dictionary to add to authors key
+    """
+    new_dict = {}
+    id_list = author[2].split(' ')
+    new_dict["name"] = get_author(author)
+    id_str = id_list[0].strip()
+    id_num = "N/A"
+    for i in range(len(id_str)):
+        if (i+1) < len(id_str):
+            if (id_str[i].lower() == 'a' or id_str[i].lower() == 'f') and id_str[i+1].isdigit():
+                id_num = id_str[i+1]
+                break
+    new_dict["id"] = id_num
+    new_dict["aff"] = affil_dict[id_list[0]] or "N/A"
+    if len(id_list) > 1:
+        for id in id_list[1:]:
+            new_dict["aff"] = (new_dict["aff"] + "; " + affil_dict[id]) or "N/A"
+    return new_dict
 
 def pubmed_get_authors(pubmed_xml: dict) -> list:
     """Extracts authors from pubmed_xml
@@ -149,13 +193,16 @@ def pubmed_get_authors(pubmed_xml: dict) -> list:
         pubmed_xml (dist): dict with pubmed_xml info
 
     Returns:
-        list: pubmed authors.
+        list: pubmed authors
     """
+    results = []
     author_list = pubmed_xml.get("author_list")
-    result = None
-    if author_list:
-        result = [get_author(a) for a in author_list]
-    return result
+    affil_list = pubmed_xml.get("affiliation_list")
+    affil_dict = make_dict(affil_list)
+    for a in author_list:
+        author_dict = make_author_dict(a, affil_dict)
+        results.append(author_dict)
+    return results
 
 
 def pubmed_get_subjects(pubmed_xml: dict) -> list:
