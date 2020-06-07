@@ -1,14 +1,11 @@
 import os
-import logging
 import tarfile
-import ntpath
 import shutil
-import fnmatch
-import glob
 import json
 import pubmed_parser as pp
 from airflow.contrib.hooks.ftp_hook import FTPHook
 from elasticsearch import Elasticsearch
+from common.ml.bert_labeller import BertLabeller
 
 
 def ftp_connect(ftp_conn_id: str) -> FTPHook:
@@ -173,7 +170,7 @@ def pubmed_get_subjects(pubmed_xml: dict) -> list:
     return list(filter(None, map(lambda x: x.strip(), pubmed_xml.get("subjects").split(";"))))
 
 
-def get_keywords(subjects: list) -> list:
+def pubmed_get_keywords(subjects: list) -> list:
     """Extracts keywords from subjects if exist
 
     Args:
@@ -185,7 +182,7 @@ def get_keywords(subjects: list) -> list:
     return subjects[1:] if subjects else []
 
 
-def get_article_type(subjects: list) -> str:
+def pubmed_get_article_type(subjects: list) -> str:
     """Extracts article_type from subjects if exist
 
     Args:
@@ -197,7 +194,21 @@ def get_article_type(subjects: list) -> str:
     return subjects[0] if subjects else None
 
 
-def build_case_report_json(xml_path: str) -> dict:
+def pubmed_get_entities(labeller: BertLabeller, text: str) -> list:
+    entities = []
+    if not text:
+        return entities
+    tokens, locations = labeller.paragraph_label(text)
+    n = len(tokens)
+
+    for i in range(n):
+        entity = [f"T{i+1}", tokens[i], [locations[i]]]
+        entities.append(entity)
+
+    return entities
+
+
+def build_case_report_json(xml_path: str, labeller: BertLabeller = None) -> dict:
     """Makes and returns a JSON object from pubmed XML files
     Args:
         xml_path (str): path to input XML file
@@ -206,8 +217,10 @@ def build_case_report_json(xml_path: str) -> dict:
     pubmed_paragraph = pp.parse_pubmed_paragraph(xml_path)
     pubmed_references = pp.parse_pubmed_references(xml_path)
     subjects = pubmed_get_subjects(pubmed_xml)
-    keywords = get_keywords(subjects)
-    article_type = get_article_type(subjects)
+    keywords = pubmed_get_keywords(subjects)
+    article_type = pubmed_get_article_type(subjects)
+    text = pubmed_get_text(pubmed_paragraph)
+    entities = pubmed_get_entities(labeller, text) if labeller else []
 
     case_report = {
         "pmID": pubmed_xml.get("pmid"),
@@ -218,8 +231,8 @@ def build_case_report_json(xml_path: str) -> dict:
         "modifications": [],
         "normalizations": [],
         # ctime            : 1351154734.5055847,
-        "text": pubmed_get_text(pubmed_paragraph),
-        "entities": [],
+        "text": text,
+        "entities": entities,
         "attributes": [],
         # date : { type: Date, default: Date.now }
         "relations": [],
@@ -270,6 +283,7 @@ def text_filter(text: str, terms: list, min_terms: int) -> bool:
         return True
     else:
         return False
+
 
 def subject_filter(subjects: list, terms: list) -> bool:
     """Check if there are any matching subjects and terms
@@ -338,7 +352,7 @@ def generate_elasticsearch_body(es: Elasticsearch, docs: list) -> list:
     return body
 
 
-def join_json_data(filenames: str, dest_path: str) -> None:
+def join_json_data(filenames: str, dest_path: str, labeller: BertLabeller = None) -> None:
     """Make a json file consisting of multiple json data
 
     Args:
@@ -348,7 +362,7 @@ def join_json_data(filenames: str, dest_path: str) -> None:
     outfile = open(dest_path, 'w')
 
     for filename in filenames:
-        new_json = build_case_report_json(filename)
+        new_json = build_case_report_json(filename, labeller)
 
         if validate_case_report(new_json):
             title_terms = ["heart", "cardiology", "heartrhythm",

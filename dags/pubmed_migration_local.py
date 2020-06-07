@@ -8,12 +8,14 @@ import glob
 import json
 from airflow.contrib.hooks.mongo_hook import MongoHook
 from common.utils import *
+from common.ml.bert_labeller import BertLabeller
 
 
 mongodb_hook = MongoHook('mongo_default')
 ftp_conn_id = "pubmed_ftp"
 s3bucket = 'case_reports'
 mongo_folder = 'casereports_cardio'
+root_dir = '/usr/local/airflow'
 
 
 def extract_pubmed_data() -> None:
@@ -22,7 +24,6 @@ def extract_pubmed_data() -> None:
     # to test specific tar files
     pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
-    root_dir = '/usr/local/airflow'
     pubmed_dir = os.path.join(root_dir, 'pubmed')
     original_dir = os.path.join(pubmed_dir, 'original')
     prefix = 'case_reports/pubmed/original'
@@ -60,10 +61,10 @@ def extract_pubmed_data_failure_callback(context) -> None:
 def transform_pubmed_data() -> None:
     """Downloads forms JSON files from contents of tarfile
     """
-    root_dir = '/usr/local/airflow'
     pubmed_dir = os.path.join(root_dir, 'pubmed')
     json_dir = os.path.join(pubmed_dir, 'json')
     original_dir = os.path.join(pubmed_dir, 'original')
+    labeller = BertLabeller()
 
     delete_dir(json_dir)
     create_dir(pubmed_dir)
@@ -82,7 +83,7 @@ def transform_pubmed_data() -> None:
         glob_path = os.path.join(o_path, "*", "*.nxml")
         fns = [f for f in glob.glob(glob_path)]
         json_path = os.path.join(json_dir, o_path_basename + '.json')
-        join_json_data(fns, json_path)
+        join_json_data(filenames, json_path, labeller)
         delete_dir(o_path)
 
 
@@ -93,7 +94,6 @@ def transform_pubmed_data_failure_callback(context) -> None:
 def update_mongo() -> list:
     """Updates MongoDB caseReports
     """
-    root_dir = '/usr/local/airflow'
     pubmed_dir = os.path.join(root_dir, 'pubmed')
     json_dir = os.path.join(pubmed_dir, 'json')
 
