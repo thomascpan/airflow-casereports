@@ -17,6 +17,7 @@ root_dir = '/usr/local/airflow'
 class BertLabeller:
 
     def __init__(self, model_dir: str = None, url: str = 'https://drive.google.com/uc?id=16Neexi-QyX-WettcN6Oc6mNNuK4NlsIr'):
+        self.dim = 512
         self.model_dir = model_dir or os.path.join(root_dir, 'model_save')
         self.tag2idx_path = os.path.join(self.model_dir, 'tag2idx.pckl')
         self.download_file = 'roberta.zip'
@@ -29,6 +30,9 @@ class BertLabeller:
         self.paragraph_tokenizer = nltk.data.load(
             'tokenizers/punkt/english.pickle')
         self.tokenizer = self.__load_tokenizer()
+
+    def __validate_input_dim(self, input_tokens) -> bool:
+        return len(input_tokens) <= self.dim
 
     def __download_model(self, url: str, output_path: str) -> None:
         if not os.path.exists(output_path):
@@ -66,14 +70,14 @@ class BertLabeller:
         return location
 
     def __sentence_label(self, sentence) -> (list, list):
-        tokenized_sentence = self.tokenizer.encode(sentence)
-        input_ids = torch.tensor([tokenized_sentence]).to(self.device)
-
         all_tokens = []
         origin_tokens = sentence.split(' ')
         all_entities = []
         entity_types = []
         tokenized_sentence = self.tokenizer.encode(sentence)
+        if not self.__validate_input_dim(tokenized_sentence):
+            return None, None
+
         input_ids = torch.tensor([tokenized_sentence]).to(self.device)
 
         predictions = []
@@ -131,6 +135,8 @@ class BertLabeller:
         tokens = []
         for sentence in tokenized_paragraph:
             all_tokens, all_entities = self.__sentence_label(sentence)
+            if not (all_tokens and all_entities):
+                return None, None
             sentences += all_tokens
             tokens += all_entities
 

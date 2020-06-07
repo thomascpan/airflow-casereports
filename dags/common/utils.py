@@ -199,6 +199,8 @@ def pubmed_get_entities(labeller: BertLabeller, text: str) -> list:
     if not text:
         return entities
     tokens, locations = labeller.paragraph_label(text)
+    if not (tokens and locations):
+        return []
     n = len(tokens)
 
     for i in range(n):
