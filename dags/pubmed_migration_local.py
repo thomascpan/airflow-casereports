@@ -43,11 +43,8 @@ def extract_pubmed_data() -> None:
         local_path = os.path.join(original_dir, filename)
 
         ftp_hook.retrieve_file(remote_path, local_path)
-        o_path = extract_original_name(local_path)
 
-        extract_file_case_reports(local_path, o_path)
-        delete_file(local_path)
-        make_tarfile(local_path, o_path)
+        extract_file_case_reports(local_path)
         delete_dir(o_path)
 
         ftp_disconnect(ftp_hook)

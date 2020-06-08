@@ -46,6 +46,16 @@ def extract_original_name(filepath: str) -> str:
     return ".".join(name[0:-2])
 
 
+def parent_dir(path: str) -> str:
+    """Gets parent dir of path
+    Args:
+        path (str): path of file.
+    Returns:
+        str: parent dir
+    """
+    return os.path.abspath(os.path.join(path, os.pardir))
+
+
 def create_dir(dirname: str) -> None:
     """Creates directory even if exist
     Args:
@@ -61,6 +71,15 @@ def delete_dir(dirname: str) -> None:
         dirname (str): name of directory.
     """
     shutil.rmtree(dirname)
+
+
+def rename_file(old: str, new: str) -> None:
+    """Renames or moves file
+    Args:
+        old (str): old name(location)
+        new (str): new name(location)
+    """
+    os.rename(old, new)
 
 
 def extract_file(filepath: str, dest_dir: str, filter_pattern: str = None) -> None:
@@ -80,13 +99,50 @@ def extract_file(filepath: str, dest_dir: str, filter_pattern: str = None) -> No
     my_tar.close()
 
 
-def extract_file_case_reports(filepath: str, dest_dir: str) -> None:
+def batch_extract_file(filepath: str, filter_pattern: str = None) -> None:
+    """Extracts only case reports from tar.gz file. Extracts to file first.
+    Args:
+         filepath (str): path of file.
+         filter_pattern (str): extracts only files matching filter_pattern.
+    """
+    o_path = extract_original_name(filepath)
+    extract_file(filepath, o_path, filter_pattern)
+    delete_file(filepath)
+    make_tarfile(local_path, o_path)
+
+
+def stream_extract_file(filepath: str, filter_pattern: str = None) -> None:
+    """Extracts only case reports from tar.gz file. Does not extracts to file first.
+    Args:
+        filepath (str): path of file.
+        filter_pattern (str): extracts only files matching filter_pattern.
+    """
+    output_filepath = os.path.join(parent_dir(filepath), "temp.tar.gz")
+    with tarfile.open(filepath, 'r|gz') as rtf:
+        with tarfile.open(output_filepath, "w|gz") as wtf:
+            for entry in rtf:
+                if filter_pattern:
+                    if filter_pattern in entry.name:
+                        fileobj = rtf.extractfile(entry)
+                        wtf.addfile(entry, fileobj)
+                else:
+                    fileobj = rtf.extractfile(entry)
+                    wtf.addfile(entry, fileobj)
+    delete_file(filepath)
+    rename_file(output_filepath, filepath)
+
+
+def extract_file_case_reports(filepath: str, stream: bool = True) -> None:
     """Extracts only case reports from tar.gz file.
     Args:
         filepath (str): path of file.
-        dest_dir (str): destination directory.
+        stream (bool): streaming extraction. Does not extract to file.
     """
-    extract_file(filepath, dest_dir, "Case_Rep")
+    filter_pattern = "Case_Rep"
+    if stream:
+        stream_extract_file(filepath, filter_pattern)
+    else:
+        batch_extract_file(filepath, filter_pattern)
 
 
 def delete_file(filepath: str) -> None:
@@ -145,6 +201,7 @@ def get_author(author: list) -> str:
     else:
         return "N/A"
 
+
 def make_dict(affil_list: list) -> dict:
     """Creates a dictionary for affiliation lookup.
 
@@ -158,6 +215,7 @@ def make_dict(affil_list: list) -> dict:
     for affil in affil_list:
         affil_dict[affil[0]] = affil[1]
     return affil_dict
+
 
 def make_author_dict(author: list, affil_dict: dict) -> dict:
     """Creates a list of dictionaries for the authors key
@@ -175,16 +233,18 @@ def make_author_dict(author: list, affil_dict: dict) -> dict:
     id_str = id_list[0].strip()
     id_num = "N/A"
     for i in range(len(id_str)):
-        if (i+1) < len(id_str):
-            if (id_str[i].lower() == 'a' or id_str[i].lower() == 'f') and id_str[i+1].isdigit():
-                id_num = id_str[i+1]
+        if (i + 1) < len(id_str):
+            if (id_str[i].lower() == 'a' or id_str[i].lower() == 'f') and id_str[i + 1].isdigit():
+                id_num = id_str[i + 1]
                 break
     new_dict["id"] = id_num
     new_dict["aff"] = affil_dict[id_list[0]] or "N/A"
     if len(id_list) > 1:
         for id in id_list[1:]:
-            new_dict["aff"] = (new_dict["aff"] + "; " + affil_dict[id]) or "N/A"
+            new_dict["aff"] = (new_dict["aff"] + "; " +
+                               affil_dict[id]) or "N/A"
     return new_dict
+
 
 def pubmed_get_authors(pubmed_xml: dict) -> list:
     """Extracts authors from pubmed_xml
@@ -317,6 +377,7 @@ def text_filter(text: str, terms: list, min_terms: int) -> bool:
         return True
     else:
         return False
+
 
 def subject_filter(subjects: list, terms: list) -> bool:
     """Check if there are any matching subjects and terms
