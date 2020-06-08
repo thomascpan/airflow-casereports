@@ -56,11 +56,8 @@ def extract_pubmed_data() -> None:
         local_path = os.path.join(temp_dir, filename)
 
         ftp_hook.retrieve_file(remote_path, local_path)
-        o_path = extract_original_name(local_path)
 
-        extract_file_case_reports(local_path, o_path)
-        delete_file(local_path)
-        make_tarfile(local_path, o_path)
+        extract_file_case_reports(local_path)
         key = os.path.join(prefix, filename)
         s3_hook.load_file(
             local_path, key, bucket_name=bucket_name, replace=True)
