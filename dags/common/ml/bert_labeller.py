@@ -61,12 +61,10 @@ class BertLabeller:
         start = 0
         end = 0
         location = []
-        for sentence in sentences:
-            for words in sentence:
-                for word in words:
-                    end = start + len(word)
-                    location.append([start, end])
-                    start = end + 1
+        for word in sentences:
+            end = start + len(word)
+            location.append([start, end])
+            start = end + 1
         return location
 
     def __sentence_label(self, sentence) -> (list, list):
