@@ -6,6 +6,7 @@ import pubmed_parser as pp
 import regex as re
 from airflow.contrib.hooks.ftp_hook import FTPHook
 from elasticsearch import Elasticsearch
+from typing import Callable, Generator
 from common.ml.bert_labeller import BertLabeller
 
 
@@ -79,28 +80,36 @@ def rename_file(old: str, new: str) -> None:
     os.rename(old, new)
 
 
-def extract_file(filepath: str, dest_dir: str, filter_pattern: str = None) -> None:
+def case_report_files(members: tarfile.TarFile) -> Generator:
+    """Extract a subset of a tar archive
+    Args:
+        members (tarfile.TarFile): TarFile instance
+    """
+    for tarinfo in members:
+        if "Case_Rep" in tarinfo.name:
+            yield tarinfo
+
+
+def extract_file(filepath: str, dest_dir: str, member_func: Callable = None) -> None:
     """Extracts tar.gz file.
     Args:
         filepath (str): path of file.
         dest_dir (str): destination directory.
-        filter_pattern (str): extracts only files matching filter_pattern.
+        member_func (str): genertator function to extract a subset of a tar archive
     """
     my_tar = tarfile.open(filepath)
-    for member in my_tar.getmembers():
-        if filter_pattern:
-            if filter_pattern in member.name:
-                my_tar.extract(member, dest_dir)
+    with tarfile.open(filepath) as rtf:
+        if member_func:
+            rtf.extractall(dest_dir, members=member_func(rtf))
         else:
-            my_tar.extract(member, dest_dir)
-    my_tar.close()
+            rtf.extractall(dest_dir)
 
 
-def batch_extract_file(filepath: str, filter_pattern: str = None) -> None:
+def batch_extract_file(filepath: str, member_func: Callable = None) -> None:
     """Extracts only case reports from tar.gz file. Extracts to file first.
     Args:
          filepath (str): path of file.
-         filter_pattern (str): extracts only files matching filter_pattern.
+         member_func (str): genertator function to extract a subset of a tar archive
     """
     o_path = extract_original_name(filepath)
     extract_file(filepath, o_path, filter_pattern)
@@ -139,7 +148,7 @@ def extract_file_case_reports(filepath: str, stream: bool = True) -> None:
     if stream:
         stream_extract_file(filepath, filter_pattern)
     else:
-        batch_extract_file(filepath, filter_pattern)
+        batch_extract_file(filepath, case_report_files)
 
 
 def delete_file(filepath: str) -> None:

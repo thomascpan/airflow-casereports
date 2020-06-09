@@ -103,7 +103,7 @@ def transform_pubmed_data() -> None:
 
         obj = s3_hook.get_key(key, src_bucket_name)
         obj.download_file(local_path)
-        extract_file(local_path, temp_dir)
+        extract_file(local_path, o_path)
         glob_path = os.path.join(o_path, "*", "*.nxml")
 
         filenames = [f for f in glob.glob(glob_path)]
@@ -111,10 +111,10 @@ def transform_pubmed_data() -> None:
         join_json_data(filenames, json_path, labeller)
 
         if (os.path.exists(json_path)):
-            key = os.path.join(dest_path, os.path.basename(
+            new_key = os.path.join(dest_path, os.path.basename(
                 o_path_basename + ".json"))
             s3_hook.load_file(
-                json_path, key, bucket_name=dest_bucket_name, replace=True)
+                json_path, new_key, bucket_name=dest_bucket_name, replace=True)
 
     delete_dir(temp_dir)
 
@@ -130,7 +130,8 @@ def update_mongo_and_elasticsearch() -> list:
     src_bucket_name = 'supreme-acrobat-data'
     wildcard_key = s3bucket + '/pubmed/json/*.*'
 
-    klist = s3_hook.list_keys(src_bucket_name, prefix=src_path, delimiter='/')
+    klist = s3_hook.list_keys(
+        src_bucket_name, prefix=src_path, delimiter='/') or []
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
 
     es = Elasticsearch(
