@@ -11,6 +11,7 @@ from pymongo.errors import BulkWriteError
 from typing import List
 from airflow.contrib.hooks.mongo_hook import MongoHook
 from common.utils import *
+from common.ml.bert_labeller import BertLabeller
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
@@ -19,8 +20,9 @@ s3_hook = S3Hook('my_conn_S3')
 # Setting up MongoDB hook to mlab server
 mongodb_hook = MongoHook('mongo_default')
 ftp_conn_id = "pubmed_ftp"
-s3bucket = 'case_reports'
-mongo_folder = 'casereports'
+s3bucket = 'test'
+mongo_folder = 'casereport4'
+root_dir = '/usr/local/airflow'
 
 
 def extract_pubmed_data() -> None:
@@ -28,7 +30,6 @@ def extract_pubmed_data() -> None:
     """
     pattern = "*.xml.tar.gz"
     ftp_path = '/pub/pmc/oa_bulk'
-    root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
     bucket_name = 'supreme-acrobat-data'
     prefix = s3bucket + '/pubmed/original'
@@ -72,7 +73,6 @@ def extract_pubmed_data_failure_callback(context) -> None:
 def transform_pubmed_data() -> None:
     """Downloads tarfile from S3, forms JSON files from contents, and uploads to S3
     """
-    root_dir = '/usr/local/airflow'
     temp_dir = os.path.join(root_dir, 'temp')
     src_path = s3bucket + '/pubmed/original/'
     dest_path = s3bucket + '/pubmed/json/'
@@ -83,6 +83,7 @@ def transform_pubmed_data() -> None:
     key_matches = [k for k in klist if fnmatch.fnmatch(k, wildcard_key)]
     create_dir(temp_dir)
     filecount = 0
+    labeller = BertLabeller()
 
     # deleting old entries in the JSON folder
     wildcard = s3bucket + '/pubmed/json/*.*'
@@ -107,7 +108,7 @@ def transform_pubmed_data() -> None:
 
         filenames = [f for f in glob.glob(glob_path)]
         json_path = os.path.join(temp_dir, 'temp' + str(filecount) + '.json')
-        join_json_data(filenames, json_path)
+        join_json_data(filenames, json_path, labeller)
 
         if (os.path.exists(json_path)):
             new_key = os.path.join(dest_path, os.path.basename(

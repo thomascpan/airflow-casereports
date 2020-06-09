@@ -1,7 +1,0 @@
-mongo ds123050.mlab.com:23050/hahaha -u airflow -p mnh5FME.p@i_88s
-
-# Empty collection
-db.casereports.remove({})
-
-# Restore collection from backup
-db.casereports.insert(db.casereport3.find().toArray())
