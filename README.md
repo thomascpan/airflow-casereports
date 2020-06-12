@@ -42,7 +42,12 @@ pubmed\_migration\_local is a date-pipeline simalar to pubmed_migration_aws, but
 - Carolyn Yen 
 
 ## References
-- Apache Airflow: https://airflow.apache.org/
-- Docker Airflow: https://github.com/puckel/docker-airflow
+- Apache Airflow Documentation: <https://airflow.apache.org/>
+- Docker Documentation: <https://docs.docker.com/>
+- Docker Airflow: <https://github.com/puckel/docker-airflow>
+    - Airflow Docker Image source code. Used as reference.
+- PubMed Search: <https://pubmed.ncbi.nlm.nih.gov/>
+- PubMed Parser: <https://github.com/titipata/pubmed_parser>
+    - Python package to parse downloaded PubMed case reports. 
 
 !["Home Page"](assets/img/home.png)
