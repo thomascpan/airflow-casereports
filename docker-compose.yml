@@ -28,7 +28,7 @@ services:
     volumes:
       - ./dags:/usr/local/airflow/dags
       - ./requirements.txt:/requirements.txt
-      - ./scripts:/usr/local/airflow/scripts
+      - ./script:/usr/local/airflow/script
       # Uncomment to include custom plugins
       # - ./plugins:/usr/local/airflow/plugins
     ports:
